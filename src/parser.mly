@@ -217,6 +217,7 @@ topdecl:
   K_TYPE simpletype KS_EQ typ  { D.Type ($2, $4) }
 | K_DATA simpletype KS_EQ constr_list may_have_deriving  { D.Data ([], $2, $4, $5) }
 | K_DATA may_have_context simpletype KS_EQ constr_list may_have_deriving  { D.Data ($2, $3, $5, $6) }
+| K_NEWTYPE simpletype KS_EQ newconstr may_have_deriving  { D.NewType ([], $2, $4, $5) }
 | K_NEWTYPE may_have_context simpletype KS_EQ newconstr may_have_deriving  { D.NewType ($2, $3, $5, $6) }
 | K_CLASS tycls tyvar may_have_cdecls  { D.mk_class [] $2 $3 $4 }
 | K_CLASS may_have_scontext tycls tyvar may_have_cdecls  { D.mk_class $2 $3 $4 $5 }
@@ -582,7 +583,7 @@ exp10:
 | K_IF exp K_THEN exp K_ELSE exp  { E.IfE ($2, $4, $6) } 	/*(conditional)*/
 | K_CASE exp K_OF SP_LEFT_BRACE alt_list SP_RIGHT_BRACE  { E.CaseE ($2, $5) } 	/*(case expression)*/
 | K_DO SP_LEFT_BRACE stmt_list_exp SP_RIGHT_BRACE  { E.DoE $3 } 	/*(do expression)*/
-| fexp  { E.FappE $1 }
+| fexp  { $1 }
 ;
 
 /*
@@ -590,13 +591,23 @@ exp10:
 */
 
 fexp:
-  aexp_list  { $1 }
+  aexp_list  { $1 E.FappEID }
 ;
 
+/*
 aexp_list:
   aexp aexp_list  { $1 :: $2 }
 | aexp  { [$1] }
 ;
+*/
+
+aexp_list:
+  aexp aexp_list  { fun fexp -> $2 (E.FappE (fexp, E.FexpE $1)) }
+| aexp  { fun fexp -> E.FappE (fexp, E.FexpE $1) }
+;
+/* fexp -- FexpE (fexp) */
+/* fexp ae1 -- FappE (FexpE (fexp), ae1) */
+/* fexp ae1 ae2 -- FappE (FappE (FexpE (fexp), ae1), ae2) */
 
 /*
  aexp  	 ->  	 qvar  	 (variable)

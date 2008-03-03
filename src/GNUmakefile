@@ -1,10 +1,10 @@
 PACKS=
-CMAS=str
+CMAS= str,extLib
 #OCAMLC=ocamlfind ocamlc -package ${PACKS}
-OCAMLC=ocamlfind ocamlc -g
+OCAMLC=ocamlfind ocamlc -g -I /usr/lib/ocaml/3.10.0/extlib
 
 %.byte:
-	ocamlbuild -ocamlc '${OCAMLC}' -libs ${CMAS} $@
+	ocamlbuild -ocamlc '${OCAMLC}' -lflags -I,/usr/lib/ocaml/3.10.0/extlib -libs ${CMAS} $@
 
 %.lex0: %.hs
 	./_build/lex0_main.byte < $< > $@ 2>&1
@@ -21,6 +21,9 @@ OCAMLC=ocamlfind ocamlc -g
 all: lex0_main.byte loin_main.byte layout_main.byte parse_main.byte fixity_main.byte
 
 test: clean all Prelude.lex0 Prelude.loin Prelude.layout Prelude.parse
+
+eval.cma:
+	ocamlbuild -verbose 1 -yaccflags -v -ocamlc '${OCAMLC}' eval.cma
 
 layout.cma:
 	ocamlbuild -yaccflags -v -ocamlc '${OCAMLC}' layout.cma

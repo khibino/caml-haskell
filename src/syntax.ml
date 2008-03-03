@@ -1,6 +1,6 @@
 module F = Printf
 module T = Token
-
+module L = List
 
 type fixity_lnr =
     Infix
@@ -47,6 +47,12 @@ type 'a literal =
   | Char of (char * 'a)
   | String of (string * 'a)
 
+let unloc_literal  =
+  function
+      Int (i64, _) -> Int (i64, T.implicit_loc)
+    | Float (f, _) -> Float (f, T.implicit_loc)
+    | Char (c, _) -> Char (c, T.implicit_loc)
+    | String (s, _) -> String (s, T.implicit_loc)
 
 let must_be_int li err =
   match li with
@@ -174,6 +180,12 @@ struct
       SpCon of (sp_con * 'loc)
     | Cons of ('module_info qualifier * op_attr * string * 'loc)
     | Var  of ('module_info qualifier * op_attr * string * 'loc)
+
+  let unloc =
+    function
+	SpCon (sp_con, _) -> SpCon (sp_con, T.implicit_loc)
+      | Cons (mq, opa, n, _) -> Cons (mq, opa, n, T.implicit_loc)
+      | Var  (mq, opa, n, _) -> Var (mq, opa, n, T.implicit_loc)
 
   let make_cons op q n l = Cons (q, op, n, l)
   let make_var op q n l = Var (q, op, n, l)
@@ -409,6 +421,27 @@ struct
 
     | ConOp2P of ((mod_data, T.loc) ID.id * pat * pat)
 
+  let rec to_pat_for_hash p =
+    match p with
+      PlusP (id, i64, _) -> PlusP ((ID.unloc id), i64, T.implicit_loc)
+    | VarP (id) -> VarP (ID.unloc id)
+    | AsP (id, pat) -> AsP (ID.unloc id, pat)
+    | ConP (id, pat_list) -> ConP (ID.unloc id, pat_list)
+    | LabelP (id, list)
+	-> LabelP (ID.unloc id, L.map (fun (id, pat) -> (ID.unloc id, pat)) list)
+    | LiteralP literal -> LiteralP (unloc_literal literal)
+    | WCardP -> WCardP
+    | TupleP pat_list -> TupleP (L.map to_pat_for_hash pat_list)
+    | ListP pat_list -> ListP (L.map to_pat_for_hash pat_list)
+    | MIntP (int64, _) -> MIntP (int64, T.implicit_loc)
+    | MFloatP (float, _) -> MFloatP (float, T.implicit_loc)
+    | Irref pat -> Irref (to_pat_for_hash pat)
+
+(*     | Pat0 of pat op2list_patf *)
+(*     | Pat1 of pat op2list_patf *)
+
+    | ConOp2P (id, pat1, pat2) -> ConOp2P (ID.unloc id, (to_pat_for_hash pat1), (to_pat_for_hash pat2))
+
 (*
 pati  	 ->  	 pati+1 [qconop(n,i) pati+1]
 	| 	lpati
@@ -629,6 +662,7 @@ module Expression =
 struct
   module PD = ParsedData
   module ID = Identifier 
+  module DS = DoStmt
 
   type mod_data = PD.module_data
 
@@ -656,8 +690,13 @@ struct
     | LabelConsE of ((mod_data, T.loc) ID.id * ((mod_data, T.loc) ID.id * t) list)
     | LabelUpdE of (aexp * ((mod_data, T.loc) ID.id * t) list)
 
+  and fexp =
+      FexpE of aexp
+
   and t =
-      FappE of aexp list
+(*       FappE of aexp list *)
+      FappEID
+    | FappE of (t * fexp)
     | DoE of ((t DoStmt.stmt) list * t)
     | CaseE of (t * (t Case.alt) list)
     | IfE of (t * t * t)
@@ -671,29 +710,6 @@ struct
     | VarOp2E of ((mod_data, T.loc) ID.id * t * t)
 
 
-  let rec scan_op2exp pdata list =
-    match list with
-	ExpF (exp, Op2End) -> exp
-      | ExpF (expAA, Op2F (op_aa, (ExpF (expBB, Op2End)))) ->
-	  VarOp2E (op_aa, expAA, expBB)
-      | ExpF (expAA, Op2F (op_aa, ((ExpF (expBB, Op2F (op_bb, rest))) as cdr))) ->
-	  (let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
-	   let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
-	     match (aa_fixity, bb_fixity) with
-	         ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-		   scan_op2exp pdata (ExpF (VarOp2E (op_aa, expAA, expBB), Op2F (op_bb, rest)))
-	       | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
-		   scan_op2exp pdata (ExpF (VarOp2E (op_aa, expAA, expBB), Op2F (op_bb, rest)))
-	       | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-		   VarOp2E (op_aa, expAA, (scan_op2exp pdata cdr))
-	       | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
-		   VarOp2E (op_aa, expAA, (scan_op2exp pdata cdr))
-	       | _ ->
-		   failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
-			       (fixity_str aa_fixity)
-			       (fixity_str bb_fixity)))
-      | _ -> failwith "Arity 2 operator expression syntax error."
-
 end
 
 
@@ -705,6 +721,7 @@ struct
   module ID = Identifier
   module P = Pattern
   module D = Decl
+  module DS = DoStmt
   module E = Expression
 
   let fixity_scan_gendecl =
@@ -741,23 +758,61 @@ struct
 	(_, _, (_, topdecl_list)) -> List.map fixity_scan_topdecl topdecl_list
 
 
+  let rec scan_exp_top pdata =
+      function
+	  E.Top (E.Exp0 exp0, x) -> E.Top ((scan_op2exp pdata exp0), x)
+	| _ -> failwith "Syntax BUG!!"
 
-  let op2_scan_fundec pdata =
+  and scan_op2exp pdata list =
+    match list with
+	E.ExpF (exp, E.Op2End) -> exp
+      | E.ExpF (expAA, E.Op2F (op_aa, (E.ExpF (expBB, E.Op2End)))) ->
+	  E.VarOp2E (op_aa, scan_exp10 pdata expAA, scan_exp10 pdata expBB)
+      | E.ExpF (expAA, E.Op2F (op_aa, ((E.ExpF (expBB, E.Op2F (op_bb, rest))) as cdr))) ->
+	  (let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
+	   let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
+	     match (aa_fixity, bb_fixity) with
+	         ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
+		   scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa, expAA, expBB), E.Op2F (op_bb, rest)))
+	       | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
+		   scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa, expAA, expBB), E.Op2F (op_bb, rest)))
+	       | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
+		   E.VarOp2E (op_aa, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
+	       | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
+		   E.VarOp2E (op_aa, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
+	       | _ ->
+		   failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
+			       (fixity_str aa_fixity)
+			       (fixity_str bb_fixity)))
+      | _ -> failwith "Arity 2 operator expression syntax error."
+
+  and scan_exp10 pdata exp10 =
+    match exp10 with
+	E.LambdaE (x, exp) -> E.LambdaE (x, scan_exp_top pdata exp)
+      | E.LetE (x, exp) -> E.LetE (x, scan_exp_top pdata exp)
+      | E.IfE (pred, t, f) -> E.IfE (scan_exp_top pdata pred, scan_exp_top pdata t, scan_exp_top pdata f)
+      | E.CaseE (exp, x) -> E.CaseE (scan_exp_top pdata exp, x)
+      | E.DoE (stmt_list, exp) -> E.DoE (List.map (scan_do_stmt pdata) stmt_list, scan_exp_top pdata exp)
+      | fexp -> fexp
+
+  and scan_do_stmt pdata stmt =
+    match stmt with
+	DS.Exp (exp) -> DS.Exp (scan_exp_top pdata exp)
+      | DS.Cons (pat, exp) -> DS.Cons (pat, scan_exp_top pdata exp)
+      | DS.Let (dlist) -> DS.Let (List.map (op2_scan_decl pdata) dlist)
+      | DS.Empty -> DS.Empty
+
+
+  and op2_scan_fundec pdata =
     function
 	D.Op2Pat (varop, (P.Pat1 pat1a, P.Pat1 pat1b)) ->
 	  D.Op2Pat (varop, (P.scan_op2pat 1 pdata pat1a, P.scan_op2pat 1 pdata pat1b))
       | x -> x
 
-
-  let op2_scan_exp pdata =
+  and op2_scan_rhs pdata =
       function
-	  E.Top (E.Exp0 exp0, x) -> E.Top ((E.scan_op2exp pdata exp0), x)
-	| _ -> failwith "Syntax BUG!!"
-
-  let rec op2_scan_rhs pdata =
-      function
-	  D.Rhs (exp, None) -> D.Rhs (op2_scan_exp pdata exp, None)
-	| D.Rhs (exp, Some exp_decl_list) -> D.Rhs (op2_scan_exp pdata exp, Some (List.map (op2_scan_decl pdata) exp_decl_list))
+	  D.Rhs (exp, None) -> D.Rhs (scan_exp_top pdata exp, None)
+	| D.Rhs (exp, Some exp_decl_list) -> D.Rhs (scan_exp_top pdata exp, Some (List.map (op2_scan_decl pdata) exp_decl_list))
 	| x -> x
 
   and op2_scan_decl pdata =
@@ -766,12 +821,12 @@ struct
       | D.PatFunDec (P.Pat0 pat, rhs) -> D.PatFunDec ((P.scan_op2pat 0 pdata pat), (op2_scan_rhs pdata rhs))
       | x -> x
 
-  let op2_scan_cdecl pdata tcls =
+  and op2_scan_cdecl pdata tcls =
     function
 	D.FunDecC (lhs, rhs) -> D.FunDecC ((op2_scan_fundec pdata lhs), (op2_scan_rhs pdata rhs))
       | x -> x
 
-  let op2_scan_topdecl pdata =
+  and op2_scan_topdecl pdata =
     function 
 	D.Decl d -> D.Decl (op2_scan_decl pdata d)
       | D.Class (ctx, cls, x, cdecl_list) ->
@@ -780,7 +835,7 @@ struct
 	    D.Class (ctx, cls, x, new_cdecl_list)
       | x -> x
 
-  let op2_scan_module pdata =
+  and op2_scan_module pdata =
     function
 	(x, y, (z, topdecl_list)) -> (x, y, (z, List.map (op2_scan_topdecl pdata) topdecl_list))
     

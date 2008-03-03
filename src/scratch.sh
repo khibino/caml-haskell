@@ -1,4 +1,4 @@
 #! /bin/sh
 
-make layout.cma
-rlwrap ocaml str.cma -I _build layout.cma
+make eval.cma
+rlwrap ocaml str.cma -I /usr/lib/ocaml/3.10.0/extlib extLib.cma -I _build eval.cma
