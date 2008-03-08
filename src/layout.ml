@@ -6,6 +6,7 @@ module T = Token
 module STK = Stack
 module SYN = Syntax
 module PBuf = SYN.ParseBuffer
+module ID = SYN.Identifier
 module PD = SYN.ParsedData
 module SS = SYN.Scan
 
@@ -146,8 +147,8 @@ let try_parse token_data lexbuf =
     let _ = (Stack.push pair token_stack,
 	     debug_out (Printf.sprintf "token:%s" (L0.to_string_with_loc tok))) in
       match tok with
-	  P.T_CONID (n, loc) when PBuf.class_p (PBuf.local_module_name ()) n -> P.T_CLSID (n, loc)
-	| P.T_MOD_CONID (iwm, loc) when PBuf.class_p iwm.T.modid iwm.T.id -> P.T_MOD_CLSID (iwm, loc)
+	  P.T_CONID (n, loc) when ID.class_p (ID.make_local_id n loc)  -> P.T_CLSID (n, loc)
+	| P.T_MOD_CONID (iwm, loc) when ID.class_p (ID.make_id iwm.T.modid iwm.T.id loc) -> P.T_MOD_CLSID (iwm, loc)
 	| _ -> tok
   in
 
@@ -185,7 +186,7 @@ let parse0_chan input_chan =
 
 let dump_tok_stream s =
   ST.fold_left
-    (fun () (tok, loc) -> print_endline (L0.to_string_with_loc tok))
+    (fun () (tok, loc) -> output_string stderr (L0.to_string_with_loc tok))
     ()
     s
 
@@ -199,18 +200,16 @@ let parse pre_pd_opt input_chan =
       | None -> true
   in
 
-  let parse_buffer =
-    if prelude_mode then SYN.go_prelude_mode ()
-    else PBuf.create () in
+  let parse_buffer = PBuf.create () in
+  let _ = if prelude_mode then ID.op_prelude_def () in
+
   let syntax = parse0_chan (input_chan) in
   let _ = SS.fixity_scan_module syntax in
   let debug = !debugFlagFixity in
-  let _ =  if debug then
-    let (modb, _) = (PBuf.find_module (PBuf.local_module_name ()),
-		     print_endline "--- buffer dump ---") in
-	PBuf.dump_module modb
+  let _ = if debug then
+    output_string stderr ("--- buffer dump ---" ^ (parse_buffer.PBuf.get_local_module()).PBuf.dump_buf() )
   in
-  let pd0 = SYN.create_parsed_data parse_buffer syntax in
+  let pd0 = PD.create_parsed_data parse_buffer syntax in
 
   { pd0
     with

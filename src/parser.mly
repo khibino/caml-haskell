@@ -68,7 +68,7 @@
 %token  <Token.loc>  EOF
 
 %start  e_module
-%type <((Syntax.ParsedData.module_data, Token.loc) Syntax.Identifier.id * Syntax.Module.export list * (Syntax.Module.impdecl list * Syntax.Expression.t Syntax.Decl.top list))> e_module
+%type <(Token.loc Syntax.Identifier.id * Syntax.Module.export list * (Syntax.Module.impdecl list * Syntax.Expression.t Syntax.Decl.top list))> e_module
 /*  type e_module_type = (T.loc I.id * M.export list * (M.impdecl list * E.t D.top list)) */
 
 %start  exp
@@ -83,8 +83,8 @@ e_module:
 module_top:
   K_MODULE modid export_list K_WHERE body { ($2, $3, $5) }
 | K_MODULE modid K_WHERE body         { ($2, [], $4) }
-| body { (I.make_cons I.Fun I.NotQ "Main" TK.implicit_loc,
-	  [M.EVar (I.make_cons I.Fun I.NotQ "main" TK.implicit_loc)],
+| body { (I.make_local_id "Main" TK.implicit_loc,
+	  [M.EVar (I.make_local_id "main" TK.implicit_loc)],
 	  $1) }
 ;
 
@@ -498,7 +498,7 @@ tyvar_comma_list:
 */
 
 funlhs:
-  var apat_list  { D.FunDecLV($1, $2) }
+  var apat_list  { I.fun_regist $1 true; D.FunDecLV($1, $2) }
 | op2_pat_pair  { D.op2lhs $1 }
 | SP_LEFT_PAREN funlhs SP_RIGHT_PAREN apat_list  { D.NestDec ($2, $4) }
 ;
@@ -583,7 +583,7 @@ exp10:
 | K_IF exp K_THEN exp K_ELSE exp  { E.IfE ($2, $4, $6) } 	/*(conditional)*/
 | K_CASE exp K_OF SP_LEFT_BRACE alt_list SP_RIGHT_BRACE  { E.CaseE ($2, $5) } 	/*(case expression)*/
 | K_DO SP_LEFT_BRACE stmt_list_exp SP_RIGHT_BRACE  { E.DoE $3 } 	/*(do expression)*/
-| fexp  { $1 }
+| fexp  { E.FexpE $1 }
 ;
 
 /*
@@ -591,7 +591,7 @@ exp10:
 */
 
 fexp:
-  aexp_list  { $1 E.FappEID }
+  aexp_list  { E.make_fexp $1 }
 ;
 
 /*
@@ -602,8 +602,8 @@ aexp_list:
 */
 
 aexp_list:
-  aexp aexp_list  { fun fexp -> $2 (E.FappE (fexp, E.FexpE $1)) }
-| aexp  { fun fexp -> E.FappE (fexp, E.FexpE $1) }
+  aexp aexp_list  { fun fexp -> $2 (E.FappE (fexp, $1)) }
+| aexp  { fun fexp -> E.FappE (fexp, $1) }
 ;
 /* fexp -- FexpE (fexp) */
 /* fexp ae1 -- FappE (FexpE (fexp), ae1) */
@@ -818,9 +818,9 @@ fpat:
 ;
 
 gcon:
-  SP_LEFT_PAREN SP_RIGHT_PAREN  { I.SpCon (I.Unit, $1) }
-| SP_LEFT_BRACKET SP_RIGHT_BRACKET  { I.SpCon (I.NullList, $1) }
-| SP_LEFT_PAREN comma_list SP_RIGHT_PAREN  { I.SpCon (I.Tuple $2, $1) }
+  SP_LEFT_PAREN SP_RIGHT_PAREN  { I.sp_unit $1 }
+| SP_LEFT_BRACKET SP_RIGHT_BRACKET  { I.sp_null_list $1 }
+| SP_LEFT_PAREN comma_list SP_RIGHT_PAREN  { I.sp_tuple $2 $1 }
 | qcon  { $1 }
 ;
 
@@ -901,85 +901,85 @@ qop:
 
 
 gconsym:
-  KS_COLON  { I.SpCon (I.Colon, $1) }
+  KS_COLON  { I.sp_colon $1 }
 | qconsym   { $1 }
 ;
 
 qvarid:
-  T_MOD_VARID   { I.make_var_with_mod I.Fun $1 }
-| varid         { I.to_qual $1 }
+  T_MOD_VARID   { I.make_id_with_mod $1 }
+| varid         { $1 }
 ;
 
 qconid:
-  T_MOD_CONID   { I.make_cons_with_mod I.Fun $1 }
-| conid         { I.to_qual $1 }
+  T_MOD_CONID   { I.make_id_with_mod $1 }
+| conid         { $1 }
 ;
 
 qvarsym:
-  T_MOD_VARSYM  { I.make_var_with_mod I.Op2 $1 }
-| varsym        { I.to_qual $1 }
+  T_MOD_VARSYM  { I.make_id_with_mod $1 }
+| varsym        { $1 }
 ;
 
 qconsym:
-  T_MOD_CONSYM  { I.make_cons_with_mod I.Op2 $1 }
-| consym        { I.to_qual $1 }
+  T_MOD_CONSYM  { I.make_id_with_mod $1 }
+| consym        { $1 }
 ;
 
 varid:
-  T_VARID  { I.make_var I.Fun I.NotQ (fst $1) (snd $1) }
+  T_VARID  { I.make_local_id (fst $1) (snd $1) }
 | k_as         { $1 }
 | k_qualified  { $1 }
 | k_hiding     { $1 }
 ;
 
 k_as:
-  K_AS   { I.make_var I.Fun I.NotQ "as" $1 }
+  K_AS   { I.make_local_id "as" $1 }
 ;
 
 k_qualified:
-  K_QUALIFIED   { I.make_var I.Fun I.NotQ "qulified" $1 }
+  K_QUALIFIED   { I.make_local_id "qulified" $1 }
 ;
 
 k_hiding:
-  K_HIDING   { I.make_var I.Fun I.NotQ "hiding" $1 }
+  K_HIDING   { I.make_local_id "hiding" $1 }
 ;
 
 qtycls:
   /* qconid  { $1 } */ 	/*(qualified type classes)*/
-  T_MOD_CLSID   { I.make_cons_with_mod I.Fun $1 }
-| tycls         { I.to_qual $1 }
+  T_MOD_CLSID   { I.make_id_with_mod $1 }
+| tycls         { $1 }
 ;
 
 tycls:
   conid  { $1 } 	/*(type classes)*/
-| T_CLSID  { I.make_cons I.Fun I.NotQ (fst $1) (snd $1) }
+| T_CLSID  { I.make_local_id (fst $1) (snd $1) }
 ;
 
 conid:
-  T_CONID  { I.make_cons I.Fun I.NotQ (fst $1) (snd $1) }
+  T_CONID  { I.make_local_id (fst $1) (snd $1) }
 ;
 
 varsym:
-  T_VARSYM  { I.make_var I.Op2 I.NotQ (fst $1) (snd $1) }
+  T_VARSYM  { I.make_local_id (fst $1) (snd $1) }
 | ks_plus    { $1 }
 | ks_minus   { $1 }
 | ks_exclam  { $1 }
 ;
 
 ks_plus:
-  KS_PLUS   { I.make_var I.Op2 I.NotQ "+" $1 }
+  KS_PLUS   { I.make_local_id "+" $1 }
 ;
 
 ks_minus:
-  KS_MINUS  {  I.make_var I.Op2 I.NotQ "-" $1 }
+  KS_MINUS  { I.make_local_id "-" $1 }
 ;
 
 ks_exclam:
-  KS_EXCLAM  {  I.make_var I.Op2 I.NotQ "!" $1 }
+  KS_EXCLAM  { I.make_local_id "!" $1 }
 ;
 
 consym:
-  T_CONSYM  { I.make_cons I.Op2 I.NotQ (fst $1) (snd $1) }
+  T_CONSYM  { I.make_local_id (fst $1) (snd $1) }
 ;
 
 literal:

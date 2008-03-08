@@ -2,7 +2,7 @@
 module LO = Layout
 
 let _  =
-  let _ = (print_endline "layout output\n===", (LO.debugFlag := true)) in
+  let _ = (output_string stderr "layout output\n===", (LO.debugFlag := true)) in
     LO.dump_tok_stream
       (LO.layout
 	 (LO.create_input

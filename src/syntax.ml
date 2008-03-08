@@ -37,7 +37,7 @@ let tclass_context_str =
       None -> ""
     | Some tc -> tclass_str tc
 
-let prelude_module () = "Prelude"
+let prelude_name () = "Prelude"
 
 let create_symtab () = Hashtbl.create 32
 
@@ -59,191 +59,237 @@ let must_be_int li err =
       Int (i64, _) -> Int64.to_int i64
     | _ -> failwith err
 
+module ModuleNamespace =
+struct
+  type module_name = string option ref
+
+  let add n = ref (Some n)
+  let add_local () = (ref None)
+
+  let str n =
+    match !n with
+	Some n -> n
+      | None -> "<local>"
+
+end
+
+module OnceAssoc =
+struct
+  module H = Hashtbl
+
+  type ('a, 'b) t = {
+(*     t : ('a, b) H.t; *)
+(*     dup_err : string -> string; *)
+    mem : ('a -> bool);
+    find : ('a -> 'b);
+    add : ('a -> 'b -> unit);
+    replace : ('a -> 'b -> unit);
+
+    iter : (('a -> 'b -> unit) -> unit);
+    to_string : (unit -> string);
+  }
+
+  let create err_fun to_str_fun = 
+    let tbl = create_symtab () in {
+	mem = (fun k -> H.mem tbl k);
+	find = (fun k -> H.find tbl k);
+	add = (fun k v -> 
+		 if H.mem tbl k then failwith (err_fun k)
+		 else H.add tbl k v);
+	replace = (fun k v -> 
+		     H.replace tbl k v);
+
+	iter = (fun f -> H.iter f tbl);
+	to_string = (fun () -> H.fold (fun k v c -> c ^ (to_str_fun k v) ^ "\n") tbl "");
+      }
+    
+end
+
 module ParseBuffer =
 struct
+  module H = Hashtbl
+  module OA = OnceAssoc
+  module MN = ModuleNamespace
+
   type module_buffer = {
-    mname : string;
-    op_fixity_assoc : (string, (fixity * tclass option)) Hashtbl.t;
-    op_typesig_assoc : (string, tclass) Hashtbl.t;
-(*     op_fun_assoc : (string, ) Hashtbl.t; *)
-    tclass_assoc : (string, tclass) Hashtbl.t;
+    mname : MN.module_name;
+    op_fixity_assoc : (string, (fixity * tclass option)) OA.t;
+    
+    op_typesig_assoc : (string, tclass) OA.t;
+    op_fun_assoc : (string, bool) OA.t;
+    tclass_assoc : (string, tclass) OA.t;
+
+    dump_buf : (unit -> string)
   }
 
-  let fixity_assoc_dump fm =
-    Hashtbl.iter (fun n (fix, tco) -> print_endline (n ^ (fixity_str fix))) fm
+  let mnstr mb = MN.str mb.mname
 
-  let typesig_assoc_dump tm =
-    Hashtbl.iter (fun n tcls -> print_endline ((tclass_str tcls) ^ n)) tm
+  let create_module mn = 
+    let (fixity_a, typesig_a, fun_a, tclass_a) =
+      (OA.create
+	 ((^) "Multiple fixity declarations for ") 
+	 (fun n (fix, tcls) -> n ^ (fixity_str fix)),
+       OA.create
+	 ((^) "Multiple declarations of ") 
+	 (fun n tcls -> ((tclass_str tcls) ^ n)),
+       OA.create
+	 ((^) "Multiple declarations of ") 
+	 (fun n _ -> "func(" ^ n ^ ")"),
+       OA.create
+	 ((^) "Multiple declarations of")
+	 (fun n tcls -> ((tclass_str tcls) ^ n)))
+    in {
+	mname = mn;
+	
+	op_fixity_assoc = fixity_a;
+	op_typesig_assoc = typesig_a;
+	op_fun_assoc = fun_a;
+	tclass_assoc = tclass_a;
+
+	dump_buf = (fun () ->
+		      (fixity_a.OA.to_string ()) ^ "\n" ^ (typesig_a.OA.to_string ()) ^ "\n" ^ (tclass_a.OA.to_string ()) ^ "\n")
+      }
+
 
   type t = {
-    module_assoc : (string, module_buffer) Hashtbl.t;
-    prelude_mode : bool;
-    mutable local_module : string;
+    module_assoc : (string, module_buffer) OA.t;
+
+    get_module : (string -> module_buffer);
+    get_local_module : (unit -> module_buffer);
   }
 
-  let add_module_with_buffer pbuf modid =
-    let m = { mname = modid;
-	      op_fixity_assoc = create_symtab ();
-	      op_typesig_assoc = create_symtab ();
-	      tclass_assoc = create_symtab (); } in
-    let _ = Hashtbl.add pbuf.module_assoc m.mname m in
-      m
+  let theBufferStack = Stack.create ()
 
-  let find_module_with_buffer pbuf modid =
-    if Hashtbl.mem pbuf.module_assoc modid then
-      Hashtbl.find pbuf.module_assoc modid
-    else
-      add_module_with_buffer pbuf modid
 
-  let theLastBuffer = ref None
-
-  let create_with_prelude_flag prelude_p =
+  let create () = 
+    let (massoc, lm) = (OA.create
+			  (fun x -> "ParseBuffer BUG!: same name module added: " ^ x)
+			  (fun k m -> m.dump_buf ()),
+			create_module (MN.add_local ())) in
     let newb = {
-      module_assoc = create_symtab ();
-      prelude_mode = prelude_p;
-      local_module = if prelude_p then prelude_module () else "<local>"
+      module_assoc  = massoc;
+
+      get_module = (fun modid ->
+		      if massoc.OA.mem modid then massoc.OA.find modid
+		      else
+			let m = create_module (MN.add modid) in
+			let _ = massoc.OA.add modid m in m);
+      get_local_module = (fun () -> lm);
     } in
-    let _ = add_module_with_buffer newb newb.local_module in
-      theLastBuffer := Some newb;
+      Stack.push newb theBufferStack;
       newb
 
-  let create () = create_with_prelude_flag false
 
-  let last_buffer () = match !theLastBuffer with
-      None -> failwith "Parse buffer not initialized!"
-    | Some x -> x
+  let last_buffer () =
+    if Stack.is_empty theBufferStack then
+      failwith "Parse buffer not initialized!"
+    else
+      Stack.top theBufferStack
 
-  let local_module_name () = (last_buffer ()).local_module
 
-
-  let add_module modid = add_module_with_buffer (last_buffer ()) modid
-
-  let find_module modid = find_module_with_buffer (last_buffer ()) modid
-
-  let op_with_assoc modid op assoc_fun fails_fun =
-    let m = assoc_fun (find_module modid) in
-    let defined = Hashtbl.mem m op in
-      (defined,
-       ((fun () -> Hashtbl.find m op),
-	(fun v ->
-	   if defined then failwith (fails_fun op)
-	   else Hashtbl.add m op v)))
-
-  let op_with_fixity_assoc modid op =
-    op_with_assoc
-      modid op
-      (fun modb -> modb.op_fixity_assoc)
-      ((^) "Multiple fixity declarations for ")
-    
-  let op_with_typesig_assoc modid op =
-    op_with_assoc
-      modid op
-      (fun modb -> modb.op_typesig_assoc)
-      ((^) "Multiple declarations for ")
-
-  let dump_module m =
-    fixity_assoc_dump m.op_fixity_assoc;
-    typesig_assoc_dump m.op_typesig_assoc
-
-  let class_regist modid conid def =
-    Hashtbl.add (find_module modid).tclass_assoc conid def
-      
-  let class_find modid conid =
-    Hashtbl.find (find_module modid).tclass_assoc conid
-      
-  let class_p modid conid =
-    Hashtbl.mem (find_module modid).tclass_assoc conid
+  let find_module modid = (last_buffer ()).get_module modid
+  let find_local_module () = (last_buffer ()).get_local_module ()
 
 end
 
 module Identifier =
 struct
-  module PB = ParseBuffer
 
-  type op_attr =
-      Op2
-    | Fun
-      
+  module PBuf = ParseBuffer
+  module MN = ModuleNamespace
+  module OA = OnceAssoc
+
   type sp_con =
       Colon
     | Unit
     | NullList
     | Tuple of int
 
-  type 'module_info qualifier =
-      NotQ
-(*     | Global *)
-    | Local
-    | Qual of string * 'module_info option
+  type qualifier =
+      Sp of sp_con
+    | Qual of string option ref
 
-  type ('module_info, 'loc) id =
-      SpCon of (sp_con * 'loc)
-    | Cons of ('module_info qualifier * op_attr * string * 'loc)
-    | Var  of ('module_info qualifier * op_attr * string * 'loc)
+  type 'loc id = {
+    name : string;
+    qual : qualifier;
+    loc : 'loc;
+  }
 
-  let unloc =
-    function
-	SpCon (sp_con, _) -> SpCon (sp_con, T.implicit_loc)
-      | Cons (mq, opa, n, _) -> Cons (mq, opa, n, T.implicit_loc)
-      | Var  (mq, opa, n, _) -> Var (mq, opa, n, T.implicit_loc)
+  let make_id_core n q loc = {
+    name = n;
+    qual = q;
+    loc = loc
+  }
 
-  let make_cons op q n l = Cons (q, op, n, l)
-  let make_var op q n l = Var (q, op, n, l)
+  let make_local_id n loc = 
+    make_id_core n (Qual (PBuf.find_local_module ()).PBuf.mname) loc
 
-  let make_id_with_mod mkid_fun op data =
-    let iwm = (fst data) in mkid_fun op (Qual (iwm.T.modid, None)) iwm.T.id (snd data)
+  let make_id modid n loc = 
+    make_id_core n (Qual (PBuf.find_module modid).PBuf.mname) loc
 
-  let make_cons_with_mod op data =
-    make_id_with_mod make_cons op data
+  let sp_colon     loc = make_id_core ":" (Sp Colon) loc
+  let sp_unit      loc = make_id_core "()" (Sp Unit) loc
+  let sp_null_list loc = make_id_core "[]" (Sp NullList) loc
+  let sp_tuple   i loc =
+    make_id_core
+      ("(" ^ (Array.fold_left (^) "" (Array.make (i-1) ",")) ^ ")")
+      (Sp (Tuple i))
+      loc
 
-  let make_var_with_mod op data =
-    make_id_with_mod make_var op data
+  let unloc id = { id with loc = T.implicit_loc }
 
-  let to_qual id =
-    match id with
-	SpCon (_) -> id
-      | Cons (NotQ, op, n, l) -> Cons (Local, op, n, l)
-      | Var  (NotQ, op, n, l) -> Var  (Local, op, n, l)
-      | _ -> failwith "Syntax BUG!"
+  let make_id_with_mod data =
+    let iwm = (fst data) in make_id iwm.T.modid iwm.T.id (snd data)
 
-  let name_with_local_module id local_module =
-    match id with
-	SpCon (Colon, _) ->    (prelude_module (), ":")
-      |	SpCon (Unit, _) ->     (prelude_module (), "()")
-      |	SpCon (NullList, _) -> (prelude_module (), "[]")
-      |	SpCon (Tuple i, _) ->  (prelude_module (), "(" ^ (Array.fold_left (^) "" (Array.make (i-1) ",")) ^ ")")
-      | Cons ((NotQ | Local), op, n, l) -> (local_module, n)
-      | Var  ((NotQ | Local), op, n, l) -> (local_module, n)
-      | Cons (Qual (modn, _), op, n, l) -> (modn, n)
-      | Var  (Qual (modn, _), op, n, l) -> (modn, n)
+  let get_module_buffer id =
+    match id.qual with
+	Sp (_) -> PBuf.find_module (prelude_name ())
+      | Qual nr ->
+	  let lm = PBuf.find_local_module () in
+	    if nr == lm.PBuf.mname then lm
+	    else PBuf.find_module (MN.str nr)
 
-  let name id =
-    name_with_local_module id (PB.local_module_name ())
-
-  let op_with_fixity_assoc id =
-    let (modid, op) = name id in
-      PB.op_with_fixity_assoc modid op
-
-  let op_with_typesig_assoc id =
-    let (modid, op) = name id in
-      PB.op_with_typesig_assoc modid op
 
   let as_op_set_fixity id fixity =
-    (snd (snd (op_with_fixity_assoc id))) fixity
+    (get_module_buffer id).PBuf.op_fixity_assoc.OA.add id.name fixity
 
   let as_op_set_typesig id tclass =
-    (snd (snd (op_with_typesig_assoc id))) tclass
+    (get_module_buffer id).PBuf.op_typesig_assoc.OA.add id.name tclass
+
+  let class_regist id def =
+    (get_module_buffer id).PBuf.tclass_assoc.OA.add id.name def
+      
+  let class_find id =
+    (get_module_buffer id).PBuf.tclass_assoc.OA.find id.name
+      
+  let class_p id =
+    (get_module_buffer id).PBuf.tclass_assoc.OA.mem id.name
+
+  let fun_regist id def =
+    (get_module_buffer id).PBuf.op_fun_assoc.OA.replace id.name def
+
+  let fun_find id =
+    (get_module_buffer id).PBuf.op_fun_assoc.OA.find id.name
 
   let op_prelude_def () =
-    if (PB.last_buffer ()).PB.prelude_mode then
-      as_op_set_fixity (SpCon (Colon, T.implicit_loc)) ((InfixRight, 5), None)
-    
+    as_op_set_fixity (sp_colon T.implicit_loc) ((InfixRight, 5), None)
+
 end
 
 module ParsedData =
 struct
+  module H = Hashtbl
+  module MN = ModuleNamespace
+  module OA = OnceAssoc
   module PBuf = ParseBuffer
-  module ID = Identifier 
+  module ID = Identifier
+
+  let debugFlag = ref false
+  let debug_out s =
+    if !debugFlag then
+      let _ = output_string stderr ("DEBUG: " ^ s ^ "\n") in
+	flush stderr
+
 
   type op_def = {
     fname : string;
@@ -255,68 +301,67 @@ struct
     let fix_part d = d.fname ^ (fixity_str d.fixity) in
       (tclass_context_str def.tclass) ^ (fix_part def)
 
-  let make_op_def modid op =
+  let make_op_def pb_mod opn =
     let (fixity, fix_tclass) = 
-      let (defined, (getter, _)) = PBuf.op_with_fixity_assoc modid op in
-	(if defined then getter ()
-	 else (default_op_fixity, None))
+      if pb_mod.PBuf.op_fixity_assoc.OA.mem opn then
+	pb_mod.PBuf.op_fixity_assoc.OA.find opn
+      else (default_op_fixity, None)
     in
 
     let sig_tclass = 
-      let (defined, (getter, _)) = PBuf.op_with_typesig_assoc modid op in
-	(if defined then Some (getter ())
-	 else None)
+      if pb_mod.PBuf.op_typesig_assoc.OA.mem opn then
+	Some (pb_mod.PBuf.op_typesig_assoc.OA.find opn)
+      else None
     in
+
     let tclass =
       match (fix_tclass, sig_tclass) with
 	  (None, None) -> None
-	| (Some _, Some _) -> failwith ("Multiple declarations for " ^ modid ^ "." ^ op)
+	| (Some _, Some _) -> failwith ("Multiple declarations for " ^ (PBuf.mnstr pb_mod) ^ "." ^ opn)
 	| (x, None) | (None, x) -> x
     in
-      { fname = op;
+      { fname = opn;
 	fixity = fixity;
 	tclass = tclass; }
 
-  let op_assoc_dump oa =
-    Hashtbl.iter (fun fn def -> print_endline (op_def_string def)) oa
 
   type module_data = {
     mname : string;
-    op_assoc : (string, op_def) Hashtbl.t;
-    tclass_assoc : (string, tclass) Hashtbl.t;
+    op_assoc : (string, op_def) OA.t;
+    tclass_assoc : (string, tclass) OA.t;
   }
 
   type 'module_e t = {
-    module_assoc : (string, module_data) Hashtbl.t;
-    prelude_mode : bool;
+    module_assoc : (string, module_data) OA.t;
+(*     prelude_mode : bool; *)
     local_module : module_data;
 
     syntax : 'module_e;
   }
 
-  let dump_module m =
-    op_assoc_dump m.op_assoc
+  let module_to_string m =
+    "module_data: " ^ m.mname ^ "\n" ^ (m.op_assoc.OA.to_string ())
 
-  let convert_local_module pb_mod local_module_name =
-    let new_op_assoc = create_symtab () in
-    let _ =
-      Hashtbl.iter
+  let convert_local_module pb_mod_local pb_mod local_module_name =
+    let new_op_assoc = OA.create
+      (fun _ -> "BUG: convert_local_module")
+      (fun _ op_def -> op_def_string op_def)
+    in
+
+    let conv_op assoc =
+      assoc.OA.iter
 	(fun op _ ->
-	   Hashtbl.add
-	     new_op_assoc
+	   new_op_assoc.OA.replace
 	     op
-	     (make_op_def pb_mod.PBuf.mname op))
-	pb_mod.PBuf.op_typesig_assoc in
-
-    let _ =
-      Hashtbl.iter
-	(fun op _ ->
-	   Hashtbl.add (* quick hack. duplicated value may be added against same key *)
-	     new_op_assoc
-	     op
-	     (make_op_def pb_mod.PBuf.mname op))
-	pb_mod.PBuf.op_fixity_assoc in 
-
+	     (make_op_def pb_mod op))
+    in
+    
+    let _ = (conv_op pb_mod_local.PBuf.op_fixity_assoc,
+	     conv_op pb_mod_local.PBuf.op_typesig_assoc,
+	     conv_op pb_mod_local.PBuf.op_fun_assoc,
+	     conv_op pb_mod.PBuf.op_fixity_assoc,
+	     conv_op pb_mod.PBuf.op_typesig_assoc,
+	     conv_op pb_mod.PBuf.op_fun_assoc) in
       (* only local module convert operator definition *)
 
       { mname = local_module_name;
@@ -325,29 +370,68 @@ struct
       }
 
   let convert_module pb_mod =
-    { mname = pb_mod.PBuf.mname;
-      op_assoc = create_symtab ();
+    { mname = PBuf.mnstr pb_mod;
+      op_assoc = OA.create
+	(fun _ -> "BUG: convert_module")
+	(fun k v -> k ^ " => " ^ (op_def_string v));
       tclass_assoc = pb_mod.PBuf.tclass_assoc;
     }
 
-  let get_module_data pd modid =
-    if Hashtbl.mem pd.module_assoc modid then
-      Hashtbl.find pd.module_assoc modid
-    else
-      failwith ("module " ^ modid ^" not found.")
-    
+  let get_module_data pd id =
+    match id.ID.qual with
+	ID.Sp (_) -> pd.module_assoc.OA.find (prelude_name ())
+      | ID.Qual nr ->
+	  let (mns, lm) = ((MN.str nr), pd.local_module) in
+	    if mns = lm.mname then lm
+	    else pd.module_assoc.OA.find mns
+(*       failwith ("module " ^ modid ^" not found.") *)
 
   let id_op_def (pd, pre_pd) id =
-    let (modid, op) = ID.name_with_local_module id pd.local_module.mname in
-    let m = get_module_data pd modid in
-      if Hashtbl.mem m.op_assoc op then
-	Hashtbl.find m.op_assoc op
+    let (m, op) = (get_module_data pd id, id.ID.name) in
+      if m.op_assoc.OA.mem op then
+	m.op_assoc.OA.find op
       else
-	let pm = get_module_data pre_pd (prelude_module ()) in
-	  if Hashtbl.mem pm.op_assoc op then
-	    Hashtbl.find pm.op_assoc op
+	let pm = pre_pd.module_assoc.OA.find (prelude_name ()) in
+	  if pm.op_assoc.OA.mem op then
+	    pm.op_assoc.OA.find op
 	  else
-	    failwith ("operator " ^ op ^" not found in module " ^ modid)
+	    failwith ("operator " ^ op ^" not found in module " ^ m.mname)
+
+  let create_parsed_data pbuf ((local_module_id, _, _) as syntax_t) =
+    let new_mod_assoc = OA.create
+      (fun _ -> "BUG: convert_local_module")
+      (fun k m -> module_to_string m)
+    in
+    let local_module_name = local_module_id.ID.name in
+    let _ = pbuf.PBuf.module_assoc.OA.iter
+      (fun modid pb_mod ->
+	 if ((PBuf.mnstr pb_mod) <> local_module_name) then
+	   let _ = debug_out ("Converting module '" ^ modid ^ "' ...") in
+	   let mod_data = convert_module pb_mod in
+	   let _ = debug_out ("Convert module done.") in
+	     new_mod_assoc.OA.add mod_data.mname mod_data
+	 else
+	   debug_out ("Skipping module '" ^ modid ^ "' which is local")
+(* 	   else convert_local_module (pbuf.PBuf.get_local_module ()) pb_mod local_module_name *)
+      )
+    in
+
+    let _ = debug_out ("Converting local module '" ^ local_module_name ^ "' ...") in
+    let lm = convert_local_module
+      (pbuf.PBuf.get_local_module ())
+      (pbuf.PBuf.get_module local_module_name)
+      local_module_name
+    in
+    let _ = debug_out ("Convert local module done.") in
+
+    let _ = new_mod_assoc.OA.add local_module_name lm in
+    let _ = (pbuf.PBuf.get_local_module ()).PBuf.mname := Some local_module_name in
+      { module_assoc = new_mod_assoc;
+
+	local_module = lm;
+
+	syntax = syntax_t
+      }
 
 end
 
@@ -360,13 +444,13 @@ struct
   type mod_data = PD.module_data
 
   type symbols =
-      List of (mod_data, T.loc) ID.id list
+      List of T.loc ID.id list
     | All
 
   type import =
-      IVar of (mod_data, T.loc) ID.id
-    | ICons of ((mod_data, T.loc) ID.id * symbols)
-    | IClass of ((mod_data, T.loc) ID.id * symbols)
+      IVar of T.loc ID.id
+    | ICons of (T.loc ID.id * symbols)
+    | IClass of (T.loc ID.id * symbols)
 
   type impspec =
       Imp of import list
@@ -377,14 +461,14 @@ struct
     | Qual
 
   type impdecl =
-      IDec of (qual * (mod_data, T.loc) ID.id * (mod_data, T.loc) ID.id option * impspec option)
+      IDec of (qual * T.loc ID.id * T.loc ID.id option * impspec option)
     | IEmpty
 
   type export =
-      EVar of (mod_data, T.loc) ID.id
-    | ECons of ((mod_data, T.loc) ID.id * symbols)
-    | EClass of ((mod_data, T.loc) ID.id * symbols)
-    | EMod of (mod_data, T.loc) ID.id
+      EVar of T.loc ID.id
+    | ECons of (T.loc ID.id * symbols)
+    | EClass of (T.loc ID.id * symbols)
+    | EMod of T.loc ID.id
 
 end
 
@@ -396,18 +480,18 @@ struct
   type mod_data = PD.module_data
 
   type 'pat op2list_opf =
-      Op2F of ((mod_data, T.loc) ID.id * 'pat op2list_patf)
+      Op2F of (T.loc ID.id * 'pat op2list_patf)
     | Op2End
   and 'pat op2list_patf =
       PatF of ('pat * 'pat op2list_opf)
     | Op2NoArg
 
   type pat =
-      PlusP of ((mod_data, T.loc) ID.id * int64 * T.loc)
-    | VarP of (mod_data, T.loc) ID.id
-    | AsP of (mod_data, T.loc) ID.id * pat
-    | ConP of (mod_data, T.loc) ID.id * pat list
-    | LabelP of (mod_data, T.loc) ID.id * ((mod_data, T.loc) ID.id * pat) list
+      PlusP of (T.loc ID.id * int64 * T.loc)
+    | VarP of T.loc ID.id
+    | AsP of T.loc ID.id * pat
+    | ConP of T.loc ID.id * pat list
+    | LabelP of T.loc ID.id * (T.loc ID.id * pat) list
     | LiteralP of T.loc literal
     | WCardP
     | TupleP of pat list
@@ -419,28 +503,75 @@ struct
     | Pat0 of pat op2list_patf
     | Pat1 of pat op2list_patf
 
-    | ConOp2P of ((mod_data, T.loc) ID.id * pat * pat)
+    | ConOp2P of (T.loc ID.id * pat * pat)
 
-  let rec to_pat_for_hash p =
+  let rec scan_pattern p =
     match p with
-      PlusP (id, i64, _) -> PlusP ((ID.unloc id), i64, T.implicit_loc)
-    | VarP (id) -> VarP (ID.unloc id)
-    | AsP (id, pat) -> AsP (ID.unloc id, pat)
-    | ConP (id, pat_list) -> ConP (ID.unloc id, pat_list)
-    | LabelP (id, list)
-	-> LabelP (ID.unloc id, L.map (fun (id, pat) -> (ID.unloc id, pat)) list)
-    | LiteralP literal -> LiteralP (unloc_literal literal)
-    | WCardP -> WCardP
-    | TupleP pat_list -> TupleP (L.map to_pat_for_hash pat_list)
-    | ListP pat_list -> ListP (L.map to_pat_for_hash pat_list)
-    | MIntP (int64, _) -> MIntP (int64, T.implicit_loc)
-    | MFloatP (float, _) -> MFloatP (float, T.implicit_loc)
-    | Irref pat -> Irref (to_pat_for_hash pat)
+      PlusP (id, i64, _) ->
+	(PlusP ((ID.unloc id), i64, T.implicit_loc),
+	 ((fun a_id -> (ID.unloc a_id) <> id),
+	  ()))
+    | VarP (id) ->
+	(VarP (ID.unloc id),
+	 ((fun a_id -> (ID.unloc a_id) <> id),
+	  ()))
+    | AsP (id, pat) ->
+	(AsP (ID.unloc id, to_pat_for_hash pat),
+	 ((fun a_id ->
+	     (ID.unloc a_id) <> id && fun_fv_p pat id),
+	  ()))
+    | ConP (id, pat_list) ->
+	(ConP (ID.unloc id, L.map to_pat_for_hash pat_list),
+	 ((fun a_id ->
+	     (ID.unloc a_id) <> id && L.fold_left (fun b pat -> b && fun_fv_p pat a_id) true pat_list),
+	  ()))
+    | LabelP (id, fpat_list) ->
+	(LabelP (ID.unloc id, L.map (fun (id, pat) -> (ID.unloc id, pat)) fpat_list),
+	 ((fun a_id ->
+	    (ID.unloc a_id) <> id && L.fold_left (fun b (fvar, pat) -> b && fun_fv_p pat a_id) true fpat_list),
+	  ()))
+    | LiteralP literal ->
+	(LiteralP (unloc_literal literal),
+	 ((fun _ -> true),
+	  ()))
+    | WCardP ->
+	(WCardP,
+	 ((fun _ -> true),
+	  ()))
+    | TupleP pat_list ->
+	(TupleP (L.map to_pat_for_hash pat_list),
+	 ((fun a_id -> L.fold_left (fun b pat -> b && fun_fv_p pat a_id) true pat_list),
+	  ()))
+    | ListP pat_list ->
+	(ListP (L.map to_pat_for_hash pat_list),
+	 ((fun a_id -> L.fold_left (fun b pat -> b && fun_fv_p pat a_id) true pat_list),
+	  ()))
+    | MIntP (int64, _) ->
+	(MIntP (int64, T.implicit_loc),
+	 ((fun _ -> true),
+	  ()))
+    | MFloatP (float, _) ->
+	(MFloatP (float, T.implicit_loc),
+	 ((fun _ -> true),
+	  ()))
+    | Irref pat ->
+	(Irref (to_pat_for_hash pat),
+	 (fun_fv_p pat,
+	  (fun bf -> )))
 
 (*     | Pat0 of pat op2list_patf *)
 (*     | Pat1 of pat op2list_patf *)
 
-    | ConOp2P (id, pat1, pat2) -> ConOp2P (ID.unloc id, (to_pat_for_hash pat1), (to_pat_for_hash pat2))
+    | ConOp2P (id, pat1, pat2) ->
+	(ConOp2P (ID.unloc id, (to_pat_for_hash pat1), (to_pat_for_hash pat2)),
+	 ((fun a_id -> fun_fv_p pat1 a_id && fun_fv_p pat2 a_id),
+	  ()))
+
+    | _ -> failwith ("Not converted Pat0 or Pat1 found. parser BUG!!")
+
+  and to_pat_for_hash p = fst (scan_pattern p)
+  and fun_fv_p p = fst (snd (scan_pattern p))
+  and match_p bind_fun p = (snd (snd (scan_pattern p))) bind_fun
 
 (*
 pati  	 ->  	 pati+1 [qconop(n,i) pati+1]
@@ -499,11 +630,11 @@ struct
     | FunC
     | ListC
     | UnitC
-    | Qtycon of (mod_data, T.loc) ID.id
+    | Qtycon of T.loc ID.id
 
   type a_type =
       ConsAT of cons
-    | VarAT of (mod_data, T.loc) ID.id
+    | VarAT of T.loc ID.id
     | TupleAT of typ list
     | ListAT of typ
     | AT of typ
@@ -533,13 +664,13 @@ struct
   type mod_data = PD.module_data
 
   type con =
-      App of ((mod_data, T.loc) ID.id * Type.arity list)
-    | Op2 of ((mod_data, T.loc) ID.id * Type.arity * Type.arity)
-    | Label of ((mod_data, T.loc) ID.id * ((mod_data, T.loc) ID.id list * Type.arity) list)
+      App of (T.loc ID.id * Type.arity list)
+    | Op2 of (T.loc ID.id * Type.arity * Type.arity)
+    | Label of (T.loc ID.id * (T.loc ID.id list * Type.arity) list)
 
   type newcon =
-      Simple of ((mod_data, T.loc) ID.id * Type.a_type)
-    | WithFLD of ((mod_data, T.loc) ID.id * (mod_data, T.loc) ID.id * Type.typ)
+      Simple of (T.loc ID.id * Type.a_type)
+    | WithFLD of (T.loc ID.id * T.loc ID.id * Type.typ)
 end
 
 module Context =
@@ -550,8 +681,8 @@ struct
   type mod_data = PD.module_data
 
   type clazz =
-      Class of ((mod_data, T.loc) ID.id * (mod_data, T.loc) ID.id)
-    | ClassApp of ((mod_data, T.loc) ID.id * (mod_data, T.loc) ID.id * Type.a_type list)
+      Class of (T.loc ID.id * T.loc ID.id)
+    | ClassApp of (T.loc ID.id * T.loc ID.id * Type.a_type list)
 
   type context = clazz list
 end
@@ -564,10 +695,10 @@ struct
   type mod_data = PD.module_data
 
   type cons_arity =
-      Type of (Type.cons * (mod_data, T.loc) ID.id list)
-    | Tuple of ((mod_data, T.loc) ID.id list)
-    | List of (mod_data, T.loc) ID.id
-    | Fun of ((mod_data, T.loc) ID.id * (mod_data, T.loc) ID.id)
+      Type of (Type.cons * T.loc ID.id list)
+    | Tuple of (T.loc ID.id list)
+    | List of T.loc ID.id
+    | Fun of (T.loc ID.id * T.loc ID.id)
 end
 
 module Decl =
@@ -581,8 +712,8 @@ struct
   type mod_data = PD.module_data
 
   type gendecl =
-      TypeSig of ((mod_data, T.loc) ID.id list * Context.context option * Type.typ)
-    | Fixity of (fixity * (mod_data, T.loc) ID.id list)
+      TypeSig of (T.loc ID.id list * Context.context option * Type.typ)
+    | Fixity of (fixity * T.loc ID.id list)
     | Empty
 
   type 'exp decl =
@@ -592,21 +723,21 @@ struct
 
   and 'exp i =
       FunDecI of ('exp funlhs * 'exp rhs)
-    | BindI of ((mod_data, T.loc) ID.id * 'exp rhs)
+    | BindI of (T.loc ID.id * 'exp rhs)
     | EmptyI
 
   and 'exp c =
       GenDeclC of gendecl
     | FunDecC of ('exp funlhs * 'exp rhs)
-    | BindC of ((mod_data, T.loc) ID.id * 'exp rhs)
+    | BindC of (T.loc ID.id * 'exp rhs)
 
   and 'exp rhs =
       Rhs of ('exp * 'exp decl list option)
     | RhsWithGD of ('exp gdrhs * 'exp decl list option)
 
   and 'exp funlhs =
-      FunDecLV of ((mod_data, T.loc) ID.id * P.pat list)
-    | Op2Pat of ((mod_data, T.loc) ID.id * (P.pat * P.pat))
+      FunDecLV of (T.loc ID.id * P.pat list)
+    | Op2Pat of (T.loc ID.id * (P.pat * P.pat))
     | NestDec of ('exp funlhs * P.pat list)
 
   let op2lhs_op lhsd = fst lhsd
@@ -614,21 +745,21 @@ struct
   let op2lhs_right lhsd = snd (snd lhsd)
 
   let op2lhs lhsd =
-    Op2Pat (op2lhs_op lhsd, (P.Pat1 (op2lhs_left lhsd), P.Pat1 (op2lhs_right lhsd)))
+    let op = op2lhs_op lhsd in
+    let _ = ID.fun_regist op true in
+      Op2Pat (op, (P.Pat1 (op2lhs_left lhsd), P.Pat1 (op2lhs_right lhsd)))
 
   type 'exp top =
       Type of (Type.typ * Type.typ)
-    | Data of (Context.context * Type.typ * Constructor.con list * (mod_data, T.loc) ID.id list)
-    | NewType of (Context.context * Type.typ * Constructor.newcon * (mod_data, T.loc) ID.id list)
-    | Class of (Context.context * (mod_data, T.loc) ID.id * (mod_data, T.loc) ID.id * 'exp c list)
-    | Instance of (Context.context * (mod_data, T.loc) ID.id * Instance.cons_arity * 'exp i list)
+    | Data of (Context.context * Type.typ * Constructor.con list * T.loc ID.id list)
+    | NewType of (Context.context * Type.typ * Constructor.newcon * T.loc ID.id list)
+    | Class of (Context.context * T.loc ID.id * T.loc ID.id * 'exp c list)
+    | Instance of (Context.context * T.loc ID.id * Instance.cons_arity * 'exp i list)
     | Default of Type.typ list
     | Decl of 'exp decl
 
   let mk_class ctx name_id typev_id def =
-    let (modn, id) = ID.name name_id in
-    let (typv_modn, typev) = ID.name typev_id in
-    let _ = PBuf.class_regist modn id { cname = id; type_var = typev; ctxs = TClassCtx [] } in
+    let _ = ID.class_regist name_id { cname = name_id.ID.name; type_var = typev_id.ID.name; ctxs = TClassCtx [] } in
       Class (ctx, name_id, typev_id, def)
 
 end
@@ -667,16 +798,16 @@ struct
   type mod_data = PD.module_data
 
   type 'exp op2list_opf =
-      Op2F of ((mod_data, T.loc) ID.id * 'exp op2list_expf)
+      Op2F of (T.loc ID.id * 'exp op2list_expf)
     | Op2End
   and 'exp op2list_expf =
       ExpF of ('exp * 'exp op2list_opf)
-(*     | UniOpF of ((mod_data, T.loc) ID.id * 'exp * 'exp op2list_opf) *)
+(*     | UniOpF of (T.loc ID.id * 'exp * 'exp op2list_opf) *)
     | Op2NoArg
 
   type aexp =
-      VarE of (mod_data, T.loc) ID.id (* qvar *)
-    | ConsE of (mod_data, T.loc) ID.id (* gcon *)
+      VarE of T.loc ID.id (* qvar *)
+    | ConsE of T.loc ID.id (* gcon *)
     | LiteralE of T.loc literal
     | ParenE of t
     | TupleE of t list
@@ -685,18 +816,18 @@ struct
     | LCompE of (t * (t ListComp.qual) list)
     | MayLeftSecE of t op2list_expf
     | MayRightSecE of t op2list_opf
-    | LeftSecE of (t * (mod_data, T.loc) ID.id)
-    | RightSecE of ((mod_data, T.loc) ID.id * t)
-    | LabelConsE of ((mod_data, T.loc) ID.id * ((mod_data, T.loc) ID.id * t) list)
-    | LabelUpdE of (aexp * ((mod_data, T.loc) ID.id * t) list)
+    | LeftSecE of (t * T.loc ID.id)
+    | RightSecE of (T.loc ID.id * t)
+    | LabelConsE of (T.loc ID.id * (T.loc ID.id * t) list)
+    | LabelUpdE of (aexp * (T.loc ID.id * t) list)
 
   and fexp =
-      FexpE of aexp
+      FfunE of aexp
+    | FappE of (fexp * aexp)
+    | FappEID
 
   and t =
-(*       FappE of aexp list *)
-      FappEID
-    | FappE of (t * fexp)
+      FexpE of fexp
     | DoE of ((t DoStmt.stmt) list * t)
     | CaseE of (t * (t Case.alt) list)
     | IfE of (t * t * t)
@@ -707,8 +838,17 @@ struct
     | Top of (t * (Type.typ * Context.context option) option)
 
     | Minus of (t)
-    | VarOp2E of ((mod_data, T.loc) ID.id * t * t)
+    | VarOp2E of (T.loc ID.id * t * t)
 
+  let make_fexp aexpl_lambda =
+    let rec simplify =
+      function
+	  FappE (FappEID, x) -> FfunE x
+	| FappE (fexp, aexp) -> FappE ((simplify fexp), aexp)
+	| FfunE _ -> failwith "Already converted fexp(FfunE) found. parser BUG!!"
+	| FappEID -> failwith "Already converted fexp(FappEID) found. parser BUG!!"
+    in
+      simplify (aexpl_lambda FappEID)
 
 end
 
@@ -748,8 +888,7 @@ struct
     function 
 	D.Decl d -> fixity_scan_decl d
       | D.Class (ctx, cls, _, cdecl_list) ->
-	  let (modid, cname) = ID.name cls in
-	  let _ = List.map (fun cdecl -> fixity_scan_cdecl (PBuf.class_find modid cname) cdecl) cdecl_list in
+	  let _ = List.map (fun cdecl -> fixity_scan_cdecl (ID.class_find cls) cdecl) cdecl_list in
 	    ()
       | _ -> ()
 
@@ -830,8 +969,7 @@ struct
     function 
 	D.Decl d -> D.Decl (op2_scan_decl pdata d)
       | D.Class (ctx, cls, x, cdecl_list) ->
-	  let (modid, cname) = ID.name cls in
-	  let new_cdecl_list = List.map (fun cdecl -> op2_scan_cdecl pdata (PBuf.class_find modid cname) cdecl) cdecl_list in
+	  let new_cdecl_list = List.map (fun cdecl -> op2_scan_cdecl pdata (ID.class_find cls) cdecl) cdecl_list in
 	    D.Class (ctx, cls, x, new_cdecl_list)
       | x -> x
 
@@ -840,40 +978,3 @@ struct
 	(x, y, (z, topdecl_list)) -> (x, y, (z, List.map (op2_scan_topdecl pdata) topdecl_list))
     
 end
-
-module PBuf = ParseBuffer
-module PD = ParsedData
-module ID = Identifier
-module H = Hashtbl
-module D = Decl
-
-let go_prelude_mode () =
-  print_endline "--- Go to Prelude load mode ---";
-  let pbuf = PBuf.create_with_prelude_flag true in
-  let _ = ID.op_prelude_def () in
-    pbuf
-
-let create_parsed_data pbuf ((local_module_id, _, _) as syntax_t) =
-  let (_, local_module_name) = ID.name local_module_id in
-  print_endline (Printf.sprintf "creating PD from %s buffer and %s syntax" pbuf.PBuf.local_module local_module_name);
-  let new_mod_assoc = create_symtab () in
-  let _ = H.iter
-    (fun modid pb_mod ->
-       print_endline ("converting " ^ modid);
-       let mod_data =
-	 if (pb_mod.PBuf.mname <> pbuf.PBuf.local_module) then PD.convert_module pb_mod
-	 else PD.convert_local_module pb_mod local_module_name
-       in
-	 H.add new_mod_assoc mod_data.PD.mname mod_data)
-    pbuf.PBuf.module_assoc
-  in
-    { PD.module_assoc = new_mod_assoc;
-      PD.prelude_mode = pbuf.PBuf.prelude_mode;
-      PD.local_module =
-	if H.mem new_mod_assoc local_module_name then
-	  H.find new_mod_assoc local_module_name
-	else
-	  failwith ("BUG: Cannot find module " ^ local_module_name)
-      ;
-      PD.syntax = syntax_t
-    }

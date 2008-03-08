@@ -1,17 +1,16 @@
 
 module SYN = Syntax
 (* module PBuf = SYN.ParseBuffer *)
+module OA = SYN.OnceAssoc
 module PD = SYN.ParsedData
 (* module D = SYN.Decl *)
 module LO = Layout
 
 let _ =
-  let _ = (print_endline "fixity check mode\n---",
+  let _ = (output_string stderr "--- fixity check mode ---\n",
 	   (LO.debugFlag := true),
-	   (LO.debugFlagFixity := false)) in
+	   (LO.debugFlagFixity := false),
+	   (PD.debugFlag := true)) in
   let pd = LO.parse_with_prelude (Util.unix_input_chan ()) in
-  let _ = print_endline "--- data dump ---" in
-    PD.dump_module pd.PD.local_module
-
-(* For interactive memo *)
-(* let pd = SYN.go_prelude_mode ()  *)
+  let _ = output_string stderr "--- data dump ---\n" in
+    output_string stderr (pd.PD.module_assoc.OA.to_string ())
