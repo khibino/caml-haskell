@@ -505,74 +505,6 @@ struct
 
     | ConOp2P of (T.loc ID.id * pat * pat)
 
-  let rec scan_pattern p =
-    match p with
-      PlusP (id, i64, _) ->
-	(PlusP ((ID.unloc id), i64, T.implicit_loc),
-	 ((fun a_id -> (ID.unloc a_id) <> id),
-	  ()))
-    | VarP (id) ->
-	(VarP (ID.unloc id),
-	 ((fun a_id -> (ID.unloc a_id) <> id),
-	  ()))
-    | AsP (id, pat) ->
-	(AsP (ID.unloc id, to_pat_for_hash pat),
-	 ((fun a_id ->
-	     (ID.unloc a_id) <> id && fun_fv_p pat id),
-	  ()))
-    | ConP (id, pat_list) ->
-	(ConP (ID.unloc id, L.map to_pat_for_hash pat_list),
-	 ((fun a_id ->
-	     (ID.unloc a_id) <> id && L.fold_left (fun b pat -> b && fun_fv_p pat a_id) true pat_list),
-	  ()))
-    | LabelP (id, fpat_list) ->
-	(LabelP (ID.unloc id, L.map (fun (id, pat) -> (ID.unloc id, pat)) fpat_list),
-	 ((fun a_id ->
-	    (ID.unloc a_id) <> id && L.fold_left (fun b (fvar, pat) -> b && fun_fv_p pat a_id) true fpat_list),
-	  ()))
-    | LiteralP literal ->
-	(LiteralP (unloc_literal literal),
-	 ((fun _ -> true),
-	  ()))
-    | WCardP ->
-	(WCardP,
-	 ((fun _ -> true),
-	  ()))
-    | TupleP pat_list ->
-	(TupleP (L.map to_pat_for_hash pat_list),
-	 ((fun a_id -> L.fold_left (fun b pat -> b && fun_fv_p pat a_id) true pat_list),
-	  ()))
-    | ListP pat_list ->
-	(ListP (L.map to_pat_for_hash pat_list),
-	 ((fun a_id -> L.fold_left (fun b pat -> b && fun_fv_p pat a_id) true pat_list),
-	  ()))
-    | MIntP (int64, _) ->
-	(MIntP (int64, T.implicit_loc),
-	 ((fun _ -> true),
-	  ()))
-    | MFloatP (float, _) ->
-	(MFloatP (float, T.implicit_loc),
-	 ((fun _ -> true),
-	  ()))
-    | Irref pat ->
-	(Irref (to_pat_for_hash pat),
-	 (fun_fv_p pat,
-	  (fun bf -> )))
-
-(*     | Pat0 of pat op2list_patf *)
-(*     | Pat1 of pat op2list_patf *)
-
-    | ConOp2P (id, pat1, pat2) ->
-	(ConOp2P (ID.unloc id, (to_pat_for_hash pat1), (to_pat_for_hash pat2)),
-	 ((fun a_id -> fun_fv_p pat1 a_id && fun_fv_p pat2 a_id),
-	  ()))
-
-    | _ -> failwith ("Not converted Pat0 or Pat1 found. parser BUG!!")
-
-  and to_pat_for_hash p = fst (scan_pattern p)
-  and fun_fv_p p = fst (snd (scan_pattern p))
-  and match_p bind_fun p = (snd (snd (scan_pattern p))) bind_fun
-
 (*
 pati  	 ->  	 pati+1 [qconop(n,i) pati+1]
 	| 	lpati
@@ -793,6 +725,7 @@ module Expression =
 struct
   module PD = ParsedData
   module ID = Identifier 
+  module P = Pattern
   module DS = DoStmt
 
   type mod_data = PD.module_data
@@ -849,6 +782,75 @@ struct
 	| FappEID -> failwith "Already converted fexp(FappEID) found. parser BUG!!"
     in
       simplify (aexpl_lambda FappEID)
+
+
+  let rec scan_pattern p =
+    match p with
+      P.PlusP (id, i64, _) ->
+	(P.PlusP ((ID.unloc id), i64, T.implicit_loc),
+	 ((fun a_id -> (ID.unloc a_id) <> id),
+	  ()))
+    | P.VarP (id) ->
+	(P.VarP (ID.unloc id),
+	 ((fun a_id -> (ID.unloc a_id) <> id),
+	  ()))
+    | P.AsP (id, pat) ->
+	(P.AsP (ID.unloc id, to_pat_for_hash pat),
+	 ((fun a_id ->
+	     (ID.unloc a_id) <> id && fun_fv_p pat id),
+	  ()))
+    | P.ConP (id, pat_list) ->
+	(P.ConP (ID.unloc id, L.map to_pat_for_hash pat_list),
+	 ((fun a_id ->
+	     (ID.unloc a_id) <> id && L.fold_left (fun b pat -> b && fun_fv_p pat a_id) true pat_list),
+	  ()))
+    | P.LabelP (id, fpat_list) ->
+	(P.LabelP (ID.unloc id, L.map (fun (id, pat) -> (ID.unloc id, pat)) fpat_list),
+	 ((fun a_id ->
+	    (ID.unloc a_id) <> id && L.fold_left (fun b (fvar, pat) -> b && fun_fv_p pat a_id) true fpat_list),
+	  ()))
+    | P.LiteralP literal ->
+	(P.LiteralP (unloc_literal literal),
+	 ((fun _ -> true),
+	  ()))
+    | P.WCardP ->
+	(P.WCardP,
+	 ((fun _ -> true),
+	  ()))
+    | P.TupleP pat_list ->
+	(P.TupleP (L.map to_pat_for_hash pat_list),
+	 ((fun a_id -> L.fold_left (fun b pat -> b && fun_fv_p pat a_id) true pat_list),
+	  ()))
+    | P.ListP pat_list ->
+	(P.ListP (L.map to_pat_for_hash pat_list),
+	 ((fun a_id -> L.fold_left (fun b pat -> b && fun_fv_p pat a_id) true pat_list),
+	  ()))
+    | P.MIntP (int64, _) ->
+	(P.MIntP (int64, T.implicit_loc),
+	 ((fun _ -> true),
+	  ()))
+    | P.MFloatP (float, _) ->
+	(P.MFloatP (float, T.implicit_loc),
+	 ((fun _ -> true),
+	  ()))
+    | P.Irref pat ->
+	(P.Irref (to_pat_for_hash pat),
+	 (fun_fv_p pat,
+	  ()))
+
+(*     | P.Pat0 of pat op2list_patf *)
+(*     | P.Pat1 of pat op2list_patf *)
+
+    | P.ConOp2P (id, pat1, pat2) ->
+	(P.ConOp2P (ID.unloc id, (to_pat_for_hash pat1), (to_pat_for_hash pat2)),
+	 ((fun a_id -> fun_fv_p pat1 a_id && fun_fv_p pat2 a_id),
+	  (fun exp ->  )))
+
+    | _ -> failwith ("Not converted Pat0 or Pat1 found. parser BUG!!")
+
+  and to_pat_for_hash p = fst (scan_pattern p)
+  and fun_fv_p p = fst (snd (scan_pattern p))
+(*   and match_p bind_fun p = (snd (snd (scan_pattern p))) bind_fun *)
 
 end
 

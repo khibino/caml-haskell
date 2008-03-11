@@ -45,10 +45,10 @@ let local_env env =
     { pat_t = n} :: env
 
 let bindp env pat value =
-  H.add (env_top env) (P.to_pat_for_hash pat) value
+  H.add (env_top env) (E.to_pat_for_hash pat) value
 
 let queryp env pat =
-  H.find (env_top env) (P.to_pat_for_hash pat)
+  H.find (env_top env) (E.to_pat_for_hash pat)
 
 
 let rec arg_pat_list =
@@ -94,7 +94,7 @@ and fv_fun_exp pdata aplist =
 and fv_atom_exp pdata aplist =
   function
       E.VarE (id) ->
-	if L.fold_left (fun b pat -> b && P.fun_fv_p pat id) true aplist then [id]
+	if L.fold_left (fun b pat -> b && E.fun_fv_p pat id) true aplist then [id]
 	else []
     | x -> failwith "fv: atom_exp: Not implemented."
 
