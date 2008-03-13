@@ -1,7 +1,7 @@
 
 module SYN = Syntax
 (* module PBuf = SYN.ParseBuffer *)
-module OA = SYN.OnceAssoc
+module OA = OnceAssoc
 module PD = SYN.ParsedData
 (* module D = SYN.Decl *)
 module LO = Layout

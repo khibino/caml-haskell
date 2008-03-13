@@ -1,4 +1,6 @@
 #! /bin/sh
 
+PATH="/usr/bin:/bin"
+
 make eval.cma
-rlwrap ocaml str.cma -I /usr/lib/ocaml/3.10.0/extlib extLib.cma -I _build eval.cma
+rlwrap ocaml str.cma -I `ocamlfind query extlib` extLib.cma -I _build eval.cma

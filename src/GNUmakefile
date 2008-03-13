@@ -1,7 +1,7 @@
 PACKS=
 CMAS= str,extLib
 #OCAMLC=ocamlfind ocamlc -package ${PACKS}
-OCAMLC=ocamlfind ocamlc -g -I /usr/lib/ocaml/3.10.0/extlib
+OCAMLC=ocamlfind ocamlc -g -I $(shell ocamlfind query extlib)
 
 %.byte:
 	ocamlbuild -ocamlc '${OCAMLC}' -lflags -I,/usr/lib/ocaml/3.10.0/extlib -libs ${CMAS} $@

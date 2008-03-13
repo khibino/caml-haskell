@@ -39,8 +39,6 @@ let tclass_context_str =
 
 let prelude_name () = "Prelude"
 
-let create_symtab () = Hashtbl.create 32
-
 type 'a literal =
     Int of (int64 * 'a)
   | Float of (float * 'a)
@@ -61,7 +59,7 @@ let must_be_int li err =
 
 module ModuleNamespace =
 struct
-  type module_name = string option ref
+  type t = string option ref
 
   let add n = ref (Some n)
   let add_local () = (ref None)
@@ -73,38 +71,6 @@ struct
 
 end
 
-module OnceAssoc =
-struct
-  module H = Hashtbl
-
-  type ('a, 'b) t = {
-(*     t : ('a, b) H.t; *)
-(*     dup_err : string -> string; *)
-    mem : ('a -> bool);
-    find : ('a -> 'b);
-    add : ('a -> 'b -> unit);
-    replace : ('a -> 'b -> unit);
-
-    iter : (('a -> 'b -> unit) -> unit);
-    to_string : (unit -> string);
-  }
-
-  let create err_fun to_str_fun = 
-    let tbl = create_symtab () in {
-	mem = (fun k -> H.mem tbl k);
-	find = (fun k -> H.find tbl k);
-	add = (fun k v -> 
-		 if H.mem tbl k then failwith (err_fun k)
-		 else H.add tbl k v);
-	replace = (fun k v -> 
-		     H.replace tbl k v);
-
-	iter = (fun f -> H.iter f tbl);
-	to_string = (fun () -> H.fold (fun k v c -> c ^ (to_str_fun k v) ^ "\n") tbl "");
-      }
-    
-end
-
 module ParseBuffer =
 struct
   module H = Hashtbl
@@ -112,7 +78,7 @@ struct
   module MN = ModuleNamespace
 
   type module_buffer = {
-    mname : MN.module_name;
+    mns : MN.t;
     op_fixity_assoc : (string, (fixity * tclass option)) OA.t;
     
     op_typesig_assoc : (string, tclass) OA.t;
@@ -122,7 +88,7 @@ struct
     dump_buf : (unit -> string)
   }
 
-  let mnstr mb = MN.str mb.mname
+  let mnstr mb = MN.str mb.mns
 
   let create_module mn = 
     let (fixity_a, typesig_a, fun_a, tclass_a) =
@@ -139,7 +105,7 @@ struct
 	 ((^) "Multiple declarations of")
 	 (fun n tcls -> ((tclass_str tcls) ^ n)))
     in {
-	mname = mn;
+	mns = mn;
 	
 	op_fixity_assoc = fixity_a;
 	op_typesig_assoc = typesig_a;
@@ -222,10 +188,10 @@ struct
   }
 
   let make_local_id n loc = 
-    make_id_core n (Qual (PBuf.find_local_module ()).PBuf.mname) loc
+    make_id_core n (Qual (PBuf.find_local_module ()).PBuf.mns) loc
 
   let make_id modid n loc = 
-    make_id_core n (Qual (PBuf.find_module modid).PBuf.mname) loc
+    make_id_core n (Qual (PBuf.find_module modid).PBuf.mns) loc
 
   let sp_colon     loc = make_id_core ":" (Sp Colon) loc
   let sp_unit      loc = make_id_core "()" (Sp Unit) loc
@@ -246,7 +212,7 @@ struct
 	Sp (_) -> PBuf.find_module (prelude_name ())
       | Qual nr ->
 	  let lm = PBuf.find_local_module () in
-	    if nr == lm.PBuf.mname then lm
+	    if nr == lm.PBuf.mns then lm
 	    else PBuf.find_module (MN.str nr)
 
 
@@ -327,13 +293,13 @@ struct
 
   type module_data = {
     mname : string;
+    mn_ref : MN.t;
     op_assoc : (string, op_def) OA.t;
     tclass_assoc : (string, tclass) OA.t;
   }
 
   type 'module_e t = {
     module_assoc : (string, module_data) OA.t;
-(*     prelude_mode : bool; *)
     local_module : module_data;
 
     syntax : 'module_e;
@@ -365,12 +331,14 @@ struct
       (* only local module convert operator definition *)
 
       { mname = local_module_name;
+	mn_ref = pb_mod_local.PBuf.mns;
 	op_assoc = new_op_assoc;
 	tclass_assoc = pb_mod.PBuf.tclass_assoc;
       }
 
   let convert_module pb_mod =
     { mname = PBuf.mnstr pb_mod;
+      mn_ref = pb_mod.PBuf.mns;
       op_assoc = OA.create
 	(fun _ -> "BUG: convert_module")
 	(fun k v -> k ^ " => " ^ (op_def_string v));
@@ -425,7 +393,7 @@ struct
     let _ = debug_out ("Convert local module done.") in
 
     let _ = new_mod_assoc.OA.add local_module_name lm in
-    let _ = (pbuf.PBuf.get_local_module ()).PBuf.mname := Some local_module_name in
+    let _ = (pbuf.PBuf.get_local_module ()).PBuf.mns := Some local_module_name in
       { module_assoc = new_mod_assoc;
 
 	local_module = lm;
@@ -782,75 +750,6 @@ struct
 	| FappEID -> failwith "Already converted fexp(FappEID) found. parser BUG!!"
     in
       simplify (aexpl_lambda FappEID)
-
-
-  let rec scan_pattern p =
-    match p with
-      P.PlusP (id, i64, _) ->
-	(P.PlusP ((ID.unloc id), i64, T.implicit_loc),
-	 ((fun a_id -> (ID.unloc a_id) <> id),
-	  ()))
-    | P.VarP (id) ->
-	(P.VarP (ID.unloc id),
-	 ((fun a_id -> (ID.unloc a_id) <> id),
-	  ()))
-    | P.AsP (id, pat) ->
-	(P.AsP (ID.unloc id, to_pat_for_hash pat),
-	 ((fun a_id ->
-	     (ID.unloc a_id) <> id && fun_fv_p pat id),
-	  ()))
-    | P.ConP (id, pat_list) ->
-	(P.ConP (ID.unloc id, L.map to_pat_for_hash pat_list),
-	 ((fun a_id ->
-	     (ID.unloc a_id) <> id && L.fold_left (fun b pat -> b && fun_fv_p pat a_id) true pat_list),
-	  ()))
-    | P.LabelP (id, fpat_list) ->
-	(P.LabelP (ID.unloc id, L.map (fun (id, pat) -> (ID.unloc id, pat)) fpat_list),
-	 ((fun a_id ->
-	    (ID.unloc a_id) <> id && L.fold_left (fun b (fvar, pat) -> b && fun_fv_p pat a_id) true fpat_list),
-	  ()))
-    | P.LiteralP literal ->
-	(P.LiteralP (unloc_literal literal),
-	 ((fun _ -> true),
-	  ()))
-    | P.WCardP ->
-	(P.WCardP,
-	 ((fun _ -> true),
-	  ()))
-    | P.TupleP pat_list ->
-	(P.TupleP (L.map to_pat_for_hash pat_list),
-	 ((fun a_id -> L.fold_left (fun b pat -> b && fun_fv_p pat a_id) true pat_list),
-	  ()))
-    | P.ListP pat_list ->
-	(P.ListP (L.map to_pat_for_hash pat_list),
-	 ((fun a_id -> L.fold_left (fun b pat -> b && fun_fv_p pat a_id) true pat_list),
-	  ()))
-    | P.MIntP (int64, _) ->
-	(P.MIntP (int64, T.implicit_loc),
-	 ((fun _ -> true),
-	  ()))
-    | P.MFloatP (float, _) ->
-	(P.MFloatP (float, T.implicit_loc),
-	 ((fun _ -> true),
-	  ()))
-    | P.Irref pat ->
-	(P.Irref (to_pat_for_hash pat),
-	 (fun_fv_p pat,
-	  ()))
-
-(*     | P.Pat0 of pat op2list_patf *)
-(*     | P.Pat1 of pat op2list_patf *)
-
-    | P.ConOp2P (id, pat1, pat2) ->
-	(P.ConOp2P (ID.unloc id, (to_pat_for_hash pat1), (to_pat_for_hash pat2)),
-	 ((fun a_id -> fun_fv_p pat1 a_id && fun_fv_p pat2 a_id),
-	  (fun exp ->  )))
-
-    | _ -> failwith ("Not converted Pat0 or Pat1 found. parser BUG!!")
-
-  and to_pat_for_hash p = fst (scan_pattern p)
-  and fun_fv_p p = fst (snd (scan_pattern p))
-(*   and match_p bind_fun p = (snd (snd (scan_pattern p))) bind_fun *)
 
 end
 
