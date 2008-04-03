@@ -192,13 +192,11 @@ let dump_tok_stream s =
 
 let debugFlagFixity = ref false
 
-let parse pre_pd_opt input_chan =
+module Q = Queue
 
-  let prelude_mode =
-    match pre_pd_opt with
-	Some pre_pd -> false
-      | None -> true
-  in
+let parse_channel loaded_modules input_chan =
+
+  let prelude_mode = (Q.is_empty loaded_modules) in
 
   let parse_buffer = PBuf.create () in
   let _ = if prelude_mode then ID.op_prelude_def () in
@@ -207,23 +205,37 @@ let parse pre_pd_opt input_chan =
   let _ = SS.fixity_scan_module syntax in
   let debug = !debugFlagFixity in
   let _ = if debug then
-    output_string stderr ("--- buffer dump ---" ^ (parse_buffer.PBuf.get_local_module()).PBuf.dump_buf() )
+    output_string stderr ("--- buffer dump ---\n" ^ (parse_buffer.PBuf.get_local_module()).PBuf.dump_buf() )
   in
   let pd0 = PD.create_parsed_data parse_buffer syntax in
 
-  { pd0
-    with
-      PD.syntax
-      = (SS.op2_scan_module
-	   (pd0, (match pre_pd_opt with None -> pd0 | Some pre_pd -> pre_pd))
-	   syntax)
-  }
+  let pd1 = { pd0 with
+		PD.syntax
+		= (SS.op2_scan_module
+		     (pd0, (if prelude_mode then pd0 else Q.peek loaded_modules))
+		     syntax)
+	    } in
+  let _ = Q.add pd1 loaded_modules in
+    pd1
+
+let rec parse_files loaded =
+  function
+      [] -> loaded
+    | f :: rest ->
+	let _ = parse_channel loaded (open_in_bin f) in
+	  parse_files loaded rest
 
 let prelude_path = "./Prelude.hs"
 
+let parse_prelude () =
+  let mq = Q.create () in
+    parse_files mq [prelude_path]
+
 let parse_with_prelude input_chan =
-  let pre_pd = parse None (open_in_bin prelude_path) in
-    parse (Some pre_pd) input_chan
+  parse_channel (parse_prelude ()) input_chan
+
+let parse_files_with_prelude files =
+  parse_files (parse_prelude ()) files
 
 let parse_test fn =
   parse_with_prelude (open_in_bin fn)

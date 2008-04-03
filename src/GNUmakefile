@@ -18,7 +18,7 @@ OCAMLC=ocamlfind ocamlc -g -I $(shell ocamlfind query extlib)
 %.parse: %.hs
 	./_build/parse_main.byte < $< > $@ 2>&1
 
-all: eval.cma lex0_main.byte loin_main.byte layout_main.byte parse_main.byte fixity_main.byte
+all: eval.cma lex0_main.byte loin_main.byte layout_main.byte parse_main.byte fixity_main.byte eval_main.byte
 
 test: clean all Prelude.lex0 Prelude.loin Prelude.layout Prelude.parse
 

@@ -67,7 +67,7 @@ struct
   let str n =
     match !n with
 	Some n -> n
-      | None -> "<local>"
+      | None -> failwith "ModuleNamespace.str called with not named local module!"  (* "<local>" *)
 
 end
 
@@ -250,7 +250,7 @@ struct
   module PBuf = ParseBuffer
   module ID = Identifier
 
-  let debugFlag = ref false
+  let debugFlag = ref false  (* Syntax.ParsedData.debugFlag := true *)
   let debug_out s =
     if !debugFlag then
       let _ = output_string stderr ("DEBUG: " ^ s ^ "\n") in
@@ -286,9 +286,11 @@ struct
 	| (Some _, Some _) -> failwith ("Multiple declarations for " ^ (PBuf.mnstr pb_mod) ^ "." ^ opn)
 	| (x, None) | (None, x) -> x
     in
-      { fname = opn;
-	fixity = fixity;
-	tclass = tclass; }
+    let v = { fname = opn;
+	      fixity = fixity;
+	      tclass = tclass; } in
+      debug_out (Printf.sprintf "op '%s' defined." (op_def_string v));
+      v
 
 
   type module_data = {
@@ -314,20 +316,20 @@ struct
       (fun _ op_def -> op_def_string op_def)
     in
 
-    let conv_op assoc =
-      assoc.OA.iter
-	(fun op _ ->
-	   new_op_assoc.OA.replace
-	     op
-	     (make_op_def pb_mod op))
+    let conv_op a_pb =
+      let conv_op_assoc assoc =
+	assoc.OA.iter
+	  (fun op _ ->
+	     new_op_assoc.OA.replace
+	       op
+	       (make_op_def pb_mod_local op))
+      in
+	(conv_op_assoc a_pb.PBuf.op_fixity_assoc,
+	 conv_op_assoc a_pb.PBuf.op_typesig_assoc,
+	 conv_op_assoc a_pb.PBuf.op_fun_assoc)
     in
     
-    let _ = (conv_op pb_mod_local.PBuf.op_fixity_assoc,
-	     conv_op pb_mod_local.PBuf.op_typesig_assoc,
-	     conv_op pb_mod_local.PBuf.op_fun_assoc,
-	     conv_op pb_mod.PBuf.op_fixity_assoc,
-	     conv_op pb_mod.PBuf.op_typesig_assoc,
-	     conv_op pb_mod.PBuf.op_fun_assoc) in
+    let _ = (conv_op pb_mod_local, conv_op pb_mod) in
       (* only local module convert operator definition *)
 
       { mname = local_module_name;
@@ -715,10 +717,13 @@ struct
     | ListE of t list
     | ASeqE of (t * t option * t option)
     | LCompE of (t * (t ListComp.qual) list)
+
     | MayLeftSecE of t op2list_expf
     | MayRightSecE of t op2list_opf
+
     | LeftSecE of (t * T.loc ID.id)
     | RightSecE of (T.loc ID.id * t)
+
     | LabelConsE of (T.loc ID.id * (T.loc ID.id * t) list)
     | LabelUpdE of (aexp * (T.loc ID.id * t) list)
 
@@ -751,16 +756,22 @@ struct
     in
       simplify (aexpl_lambda FappEID)
 
+  let make_var_exp name pd =
+    VarE (ID.make_id_core name (ID.Qual pd.PD.mn_ref) T.implicit_loc)
+
 end
 
 
 module Scan =
 struct
+  module L = List
+
   module PBuf = ParseBuffer
 
   module PD = ParsedData
   module ID = Identifier
   module P = Pattern
+  module GD = Guard
   module D = Decl
   module DS = DoStmt
   module E = Expression
@@ -798,19 +809,28 @@ struct
 	(_, _, (_, topdecl_list)) -> List.map fixity_scan_topdecl topdecl_list
 
 
+
+  let lastScanBug = ref None
+
   let rec scan_exp_top pdata =
       function
-	  E.Top (E.Exp0 exp0, x) -> E.Top ((scan_op2exp pdata exp0), x)
-	| _ -> failwith "Syntax BUG!!"
+	  E.Top (exp, x) -> E.Top ((scan_exp0 pdata exp), x)
+	| x -> lastScanBug := Some x; failwith "Syntax BUG!!"
+
+  and scan_exp0 pdata =
+    function
+	E.Exp0 exp0 -> (scan_op2exp pdata exp0)
+      | x -> x
 
   and scan_op2exp pdata list =
     match list with
-	E.ExpF (exp, E.Op2End) -> exp
+	E.ExpF (exp, E.Op2End) -> scan_exp10 pdata exp
       | E.ExpF (expAA, E.Op2F (op_aa, (E.ExpF (expBB, E.Op2End)))) ->
 	  E.VarOp2E (op_aa, scan_exp10 pdata expAA, scan_exp10 pdata expBB)
       | E.ExpF (expAA, E.Op2F (op_aa, ((E.ExpF (expBB, E.Op2F (op_bb, rest))) as cdr))) ->
 	  (let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
 	   let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
+	     (* Printf.printf "(%s, %d) vs (%s, %d)\n" op_aa.ID.name (snd aa_fixity) op_bb.ID.name (snd bb_fixity); *)
 	     match (aa_fixity, bb_fixity) with
 	         ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
 		   scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa, expAA, expBB), E.Op2F (op_bb, rest)))
@@ -826,14 +846,28 @@ struct
 			       (fixity_str bb_fixity)))
       | _ -> failwith "Arity 2 operator expression syntax error."
 
+  and scan_atom_exp pdata =
+    function
+	E.ParenE exp -> E.ParenE (scan_exp_top pdata exp)
+      | E.TupleE elist -> E.TupleE (L.map (fun exp -> scan_exp_top pdata exp) elist)
+      | E.ListE elist -> E.ListE (L.map (fun exp -> scan_exp_top pdata exp) elist)
+      | x -> x
+
+  and scan_fun_exp pdata =
+    function
+	E.FfunE aexp -> E.FfunE (scan_atom_exp pdata aexp)
+      | E.FappE (fexp, aexp) -> E.FappE (scan_fun_exp pdata fexp, scan_atom_exp pdata aexp)
+      | E.FappEID -> failwith "Syntax BUG!!. FappEID found."
+
   and scan_exp10 pdata exp10 =
     match exp10 with
 	E.LambdaE (x, exp) -> E.LambdaE (x, scan_exp_top pdata exp)
-      | E.LetE (x, exp) -> E.LetE (x, scan_exp_top pdata exp)
+      | E.LetE (decl_list, exp) -> E.LetE (L.map (fun d -> op2_scan_decl pdata d) decl_list, scan_exp_top pdata exp)
       | E.IfE (pred, t, f) -> E.IfE (scan_exp_top pdata pred, scan_exp_top pdata t, scan_exp_top pdata f)
       | E.CaseE (exp, x) -> E.CaseE (scan_exp_top pdata exp, x)
       | E.DoE (stmt_list, exp) -> E.DoE (List.map (scan_do_stmt pdata) stmt_list, scan_exp_top pdata exp)
-      | fexp -> fexp
+      | E.FexpE fexp -> E.FexpE (scan_fun_exp pdata fexp)
+      | x -> x
 
   and scan_do_stmt pdata stmt =
     match stmt with
@@ -849,11 +883,16 @@ struct
 	  D.Op2Pat (varop, (P.scan_op2pat 1 pdata pat1a, P.scan_op2pat 1 pdata pat1b))
       | x -> x
 
+  and op2_scan_guard pdata =
+    function
+	(GD.Guard gde, exp) -> (GD.Guard (scan_exp0 pdata gde), scan_exp_top pdata exp)
+
   and op2_scan_rhs pdata =
       function
 	  D.Rhs (exp, None) -> D.Rhs (scan_exp_top pdata exp, None)
 	| D.Rhs (exp, Some exp_decl_list) -> D.Rhs (scan_exp_top pdata exp, Some (List.map (op2_scan_decl pdata) exp_decl_list))
-	| x -> x
+	| D.RhsWithGD (gdrhs_list, None) -> D.RhsWithGD (L.map (op2_scan_guard pdata) gdrhs_list, None)
+	| D.RhsWithGD (gdrhs_list, Some exp_decl_list) -> D.RhsWithGD (L.map (op2_scan_guard pdata) gdrhs_list, Some (List.map (op2_scan_decl pdata) exp_decl_list))
 
   and op2_scan_decl pdata =
     function
