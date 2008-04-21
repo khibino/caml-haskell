@@ -483,11 +483,11 @@ lpati 	-> 	(lpati | pati+1) qconop(l,i) pati+1
 rpati 	-> 	pati+1 qconop(r,i) (rpati | pati+1)
 *)
 
-  let rec scan_op2pat min_i pdata list =
+  let rec scan_op2pat min_i pdata pat_fun list =
     match list with
-	PatF (pat, Op2End) -> pat
+	PatF (pat, Op2End) -> pat_fun pat
       | PatF (patAA, Op2F (op_aa, (PatF (patBB, Op2End)))) ->
-	  ConOp2P (op_aa, patAA, patBB)
+	  ConOp2P (op_aa, pat_fun patAA, pat_fun patBB)
       | PatF (patAA, Op2F (op_aa, ((PatF (patBB, Op2F (op_bb, rest))) as cdr))) ->
 	  (let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
 	   let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
@@ -497,13 +497,13 @@ rpati 	-> 	pati+1 qconop(r,i) (rpati | pati+1)
 	       | (_, (_, bb_i)) when bb_i < min_i ->
 		   failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str bb_fixity))
 	       | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-		   scan_op2pat min_i pdata (PatF (ConOp2P (op_aa, patAA, patBB), Op2F (op_bb, rest)))
+		   scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa, pat_fun patAA, pat_fun patBB), Op2F (op_bb, rest)))
 	       | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
-		   scan_op2pat min_i pdata (PatF (ConOp2P (op_aa, patAA, patBB), Op2F (op_bb, rest)))
+		   scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa, pat_fun patAA, pat_fun patBB), Op2F (op_bb, rest)))
 	       | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-		   ConOp2P (op_aa, patAA, (scan_op2pat min_i pdata cdr))
+		   ConOp2P (op_aa, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
 	       | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
-		   ConOp2P (op_aa, patAA, (scan_op2pat min_i pdata cdr))
+		   ConOp2P (op_aa, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
 	       | _ ->
 		   failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
 			       (fixity_str aa_fixity)
@@ -862,25 +862,42 @@ struct
   and scan_exp10 pdata exp10 =
     match exp10 with
 	E.LambdaE (x, exp) -> E.LambdaE (x, scan_exp_top pdata exp)
-      | E.LetE (decl_list, exp) -> E.LetE (L.map (fun d -> op2_scan_decl pdata d) decl_list, scan_exp_top pdata exp)
+      | E.LetE (decl_list, exp) -> E.LetE (L.map (op2_scan_decl pdata) decl_list, scan_exp_top pdata exp)
       | E.IfE (pred, t, f) -> E.IfE (scan_exp_top pdata pred, scan_exp_top pdata t, scan_exp_top pdata f)
       | E.CaseE (exp, x) -> E.CaseE (scan_exp_top pdata exp, x)
-      | E.DoE (stmt_list, exp) -> E.DoE (List.map (scan_do_stmt pdata) stmt_list, scan_exp_top pdata exp)
+      | E.DoE (stmt_list, exp) -> E.DoE (L.map (scan_do_stmt pdata) stmt_list, scan_exp_top pdata exp)
       | E.FexpE fexp -> E.FexpE (scan_fun_exp pdata fexp)
       | x -> x
 
   and scan_do_stmt pdata stmt =
     match stmt with
 	DS.Exp (exp) -> DS.Exp (scan_exp_top pdata exp)
-      | DS.Cons (pat, exp) -> DS.Cons (pat, scan_exp_top pdata exp)
+      | DS.Cons (pat, exp) -> DS.Cons (op2_scan_pat pdata pat, scan_exp_top pdata exp)
       | DS.Let (dlist) -> DS.Let (List.map (op2_scan_decl pdata) dlist)
       | DS.Empty -> DS.Empty
 
-
-  and op2_scan_fundec pdata =
+  and op2_scan_pat pdata =
     function
-	D.Op2Pat (varop, (P.Pat1 pat1a, P.Pat1 pat1b)) ->
-	  D.Op2Pat (varop, (P.scan_op2pat 1 pdata pat1a, P.scan_op2pat 1 pdata pat1b))
+	P.Pat0 (patf) -> P.scan_op2pat 0 pdata (op2_scan_pat pdata) patf
+      | P.Pat1 (patf) -> P.scan_op2pat 1 pdata (op2_scan_pat pdata) patf
+      | p -> op2_scan_atompat pdata p
+
+  and op2_scan_atompat pdata =
+    function
+	P.AsP (id, p) -> P.AsP (id, op2_scan_pat pdata p)
+      | P.ConP (id, plist) -> P.ConP (id, L.map (fun p0 -> op2_scan_pat pdata p0) plist)
+      | P.LabelP (id, idp_list) -> P.LabelP (id, (L.map (fun (id, p0) -> (id, op2_scan_pat pdata p0)) idp_list))
+      | P.TupleP (plist) -> P.TupleP (L.map (fun p0 -> op2_scan_pat pdata p0) plist)
+      | P.ListP  (plist) -> P.ListP  (L.map (fun p0 -> op2_scan_pat pdata p0) plist)
+      | P.Irref (p) -> P.Irref (op2_scan_pat pdata p)
+      | x -> x
+
+  and op2_scan_funlhs pdata =
+    function
+	D.Op2Pat (varop, (pat_aa, pat_bb)) ->
+	  D.Op2Pat (varop, (op2_scan_pat pdata pat_aa, op2_scan_pat pdata pat_bb))
+      | D.NestDec (lhs, pat_list) ->
+	  D.NestDec (op2_scan_funlhs pdata lhs, L.map (fun p -> op2_scan_pat pdata p) pat_list)
       | x -> x
 
   and op2_scan_guard pdata =
@@ -890,19 +907,24 @@ struct
   and op2_scan_rhs pdata =
       function
 	  D.Rhs (exp, None) -> D.Rhs (scan_exp_top pdata exp, None)
-	| D.Rhs (exp, Some exp_decl_list) -> D.Rhs (scan_exp_top pdata exp, Some (List.map (op2_scan_decl pdata) exp_decl_list))
+	| D.Rhs (exp, Some exp_decl_list) -> D.Rhs (scan_exp_top pdata exp, Some (L.map (op2_scan_decl pdata) exp_decl_list))
 	| D.RhsWithGD (gdrhs_list, None) -> D.RhsWithGD (L.map (op2_scan_guard pdata) gdrhs_list, None)
 	| D.RhsWithGD (gdrhs_list, Some exp_decl_list) -> D.RhsWithGD (L.map (op2_scan_guard pdata) gdrhs_list, Some (List.map (op2_scan_decl pdata) exp_decl_list))
 
   and op2_scan_decl pdata =
     function
-	D.FunDec (lhs, rhs) -> D.FunDec ((op2_scan_fundec pdata lhs), (op2_scan_rhs pdata rhs))
-      | D.PatFunDec (P.Pat0 pat, rhs) -> D.PatFunDec ((P.scan_op2pat 0 pdata pat), (op2_scan_rhs pdata rhs))
+	D.FunDec (lhs, rhs) -> D.FunDec ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs))
+      | D.PatFunDec (pat, rhs) -> D.PatFunDec ((op2_scan_pat pdata pat), (op2_scan_rhs pdata rhs))
       | x -> x
 
   and op2_scan_cdecl pdata tcls =
     function
-	D.FunDecC (lhs, rhs) -> D.FunDecC ((op2_scan_fundec pdata lhs), (op2_scan_rhs pdata rhs))
+	D.FunDecC (lhs, rhs) -> D.FunDecC ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs))
+      | x -> x
+
+  and op2_scan_idecl pdata tcls =
+    function
+	D.FunDecI (lhs, rhs) -> D.FunDecI ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs))
       | x -> x
 
   and op2_scan_topdecl pdata =
@@ -911,6 +933,9 @@ struct
       | D.Class (ctx, cls, x, cdecl_list) ->
 	  let new_cdecl_list = List.map (fun cdecl -> op2_scan_cdecl pdata (ID.class_find cls) cdecl) cdecl_list in
 	    D.Class (ctx, cls, x, new_cdecl_list)
+      | D.Instance (ctx, cls, x, idecl_list) ->
+	  let new_idecl_list = List.map (fun idecl -> op2_scan_idecl pdata (ID.class_find cls) idecl) idecl_list in
+	    D.Instance (ctx, cls, x, new_idecl_list)
       | x -> x
 
   and op2_scan_module pdata =
