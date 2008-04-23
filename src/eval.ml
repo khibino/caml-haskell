@@ -137,7 +137,8 @@ let env_get_prelude env =
 
 let local_env env =
   let top = env_top env in
-  let n = H.copy top.pat_tbl in
+  (* let n = H.copy top.pat_tbl in *)
+  let n = H.create 32 in
     { top with pat_tbl = n} :: env
 
 let mk_literal lit =
@@ -177,11 +178,21 @@ let rec bind_pat env pat value =
   H.add (env_top_symtab env) (to_pat_for_hash pat) (ref value)
 
 and apply_pat env pat =
-  let (symtab, key) = ((env_top_symtab env), (to_pat_for_hash pat)) in
-    if H.mem symtab key then
-      H.find symtab key
-    else
-      (failwith (Printf.sprintf "pattern not found when eval: %s" (dump_pat_with_env pat env)))
+  let key = to_pat_for_hash pat in
+  let rec match_rec env =
+    match env with
+	[] -> (failwith (Printf.sprintf "pattern not found when eval: %s" (dump_pat_with_env pat env)))
+      | ebuf :: next_env ->
+	  if H.mem ebuf.pat_tbl key then H.find ebuf.pat_tbl key
+	  else
+	    let _ = H.iter (fun p may_thunk -> (* expanding pattern match *)
+			      let e = (eval_thunk may_thunk) in
+				if match_p p env e then ()
+				else failwith (Printf.sprintf "pattern not match: %s %s" (Std.dump p) (Std.dump e))) ebuf.pat_tbl in
+	      if H.mem ebuf.pat_tbl key then H.find ebuf.pat_tbl key
+	      else match_rec next_env
+  in
+    match_rec env
 
 and arity_list_take l n =
   let rec take_rec buf rest nn =
@@ -296,7 +307,7 @@ and eval_exp env =
 	   | E.CaseE (exp, (CA.Simple (pat, case_exp, [])) :: alt_list) ->
 	       let loc_env = local_env env in
 	       let _ = bind_pat loc_env pat (Thunk (exp, loc_env)) in
-		 if match_p pat env exp then
+		 if match_p pat loc_env exp then
 		   eval_exp loc_env case_exp
 		 else
 		   eval_exp env (E.Top (E.CaseE (exp, alt_list), None))
@@ -340,9 +351,7 @@ and pre_eval_rhs env rhs =
 	      bind_pat env (P.VarP op) (Thawed (mk_closure env [arg1; arg2] ev_exp))
 	  | x -> failwith (Printf.sprintf "funlhs: Not implemented: %s" (Std.dump x))
 	in ()),
-     (fun pat ->
-	bind_pat env pat (Thunk (ev_exp, env));
-	()))
+     (fun pat -> let _ = bind_pat env pat (Thunk (ev_exp, env)) in () ))
 
 and eval_gendecl env _ = ()
 
