@@ -50,6 +50,7 @@ and 'module_e value =
   | IO
   | Literal of T.loc SYN.literal
   | Cons of C.con
+  | Tuple of 'module_e pre_value list
   | List of 'module_e pre_value list
   | Closure of (P.pat list * E.t * 'module_e env_t) (* function or constructor *)
       (* arguemnt-pattern-list, expression, environment *)
@@ -174,8 +175,12 @@ let dump_pattern p =
 
 let applyClosureStack = Stack.create ()
 
-let rec bind_pat env pat value =
-  H.add (env_top_symtab env) (to_pat_for_hash pat) (ref value)
+let rec bind_pat_with_ref env pat varref =
+  let _ = H.add (env_top_symtab env) (to_pat_for_hash pat) varref in
+    varref
+
+and bind_pat env pat value =
+  bind_pat_with_ref env pat (ref value)
 
 and apply_pat env pat =
   let key = to_pat_for_hash pat in
@@ -186,9 +191,9 @@ and apply_pat env pat =
 	  if H.mem ebuf.pat_tbl key then H.find ebuf.pat_tbl key
 	  else
 	    let _ = H.iter (fun p may_thunk -> (* expanding pattern match *)
-			      let e = (eval_thunk may_thunk) in
-				if match_p p env e then ()
-				else failwith (Printf.sprintf "pattern not match: %s %s" (Std.dump p) (Std.dump e))) ebuf.pat_tbl in
+			      let varref = (eval_thunk_expand may_thunk) in
+				if match_p p env varref then ()
+				else failwith (Printf.sprintf "pattern not match: %s %s" (Std.dump p) (Std.dump varref))) ebuf.pat_tbl in
 	      if H.mem ebuf.pat_tbl key then H.find ebuf.pat_tbl key
 	      else match_rec next_env
   in
@@ -227,22 +232,29 @@ and eval_arg_atom_exp env =
 
     | E.ParenE (exp) -> eval_arg_exp env exp
 
+    | E.TupleE (_) as atom_exp -> ThunkA (atom_exp, env)
+
     | E.ListE (_) as atom_exp -> ThunkA (atom_exp, env)
     | x -> failwith (Printf.sprintf "aexp: Not implemented: %s" (dump_aexp x))
 
-and eval_thunk varref =
+and eval_thunk_expand varref =
   match !varref with
       Thunk (e, tenv) ->
 	let v = eval_exp tenv e in
 	  varref := Thawed v;
-	  v
+	  varref
+
     | ThunkA (ae, tenv) ->
 	let v = eval_atom_exp tenv ae in
 	  varref := Thawed v;
-	  v
+	  varref
 
-    | Thawed v -> v
+    | Thawed v -> varref
 
+and eval_thunk varref =
+  match !(eval_thunk_expand varref) with
+      Thawed v -> v
+    | _ -> failwith (Printf.sprintf "eval_thunk: Bug?: %s" (Std.dump varref))
 
 and eval_atom_exp env =
   function
@@ -259,6 +271,8 @@ and eval_atom_exp env =
     | E.LiteralE (lit) -> let l = Literal lit in l
 
     | E.ParenE (exp) -> eval_exp env exp
+
+    | E.TupleE (el) -> Tuple (L.map (fun e -> eval_arg_exp env e) el)
 
     | E.ListE (el) -> List (L.map (fun e -> eval_arg_exp env e) el)
 
@@ -306,8 +320,8 @@ and eval_exp env =
 	       Bottom
 	   | E.CaseE (exp, (CA.Simple (pat, case_exp, [])) :: alt_list) ->
 	       let loc_env = local_env env in
-	       let _ = bind_pat loc_env pat (Thunk (exp, loc_env)) in
-		 if match_p pat loc_env exp then
+	       let pv = bind_pat loc_env pat (Thunk (exp, loc_env)) in
+		 if match_p pat loc_env (eval_thunk_expand pv) then
 		   eval_exp loc_env case_exp
 		 else
 		   eval_exp env (E.Top (E.CaseE (exp, alt_list), None))
@@ -420,15 +434,18 @@ and scan_pattern p =
 	 (failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
     | P.VarP (id) ->
 	(P.VarP (ID.unloc id),
-	 (fun env exp ->
+	 (* (fun env exp ->
 	    let _ = bind_pat env (P.VarP (id)) (Thunk (exp, env)) in
 	      true
-	 ))
+	 ) *)
+	 (fun env varref -> true)
+	)
     | P.AsP (id, pat) ->
 	(P.AsP (ID.unloc id, to_pat_for_hash pat),
-	 (fun env exp ->
-	    let _ = bind_pat env (P.VarP (id)) (Thunk (exp, env)) in
-	      match_p pat env exp)
+	 (fun env varref ->
+	    let _ = bind_pat_with_ref env (P.VarP (id)) varref in
+	    let _ = bind_pat_with_ref env pat varref in
+	      match_p pat env varref)
 	 (* (failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))) *)
 	)
     | P.ConP (id, pat_list) ->
@@ -445,9 +462,9 @@ and scan_pattern p =
 	 (fun _ _ -> true))
     | P.TupleP pat_list ->
 	(P.TupleP (L.map to_pat_for_hash pat_list),
-	 (fun env exp ->
-	    match eval_exp env exp with
-		List (pre_vl) ->
+	 (fun env varref ->
+	    match !varref with
+		Thawed (Tuple pre_vl) ->
 		  let _ = L.map2 (fun pat pre_v -> bind_pat env pat pre_v) pat_list pre_vl in
 		    true
 	      | _ -> false)
@@ -455,13 +472,12 @@ and scan_pattern p =
 	)
     | P.ListP pat_list ->
 	(P.ListP (L.map to_pat_for_hash pat_list),
-	 (fun env exp ->
-	    let v = eval_exp env exp in
-	      match v with
-		  List pre_vl ->
-		    let _ = L.map2 (fun pat pre_v -> bind_pat env pat pre_v) pat_list pre_vl in
-		       true
-		| _ -> false
+	 (fun env varref ->
+	    match !varref with
+		Thawed (List pre_vl) ->
+		  let _ = L.map2 (fun pat pre_v -> bind_pat env pat pre_v) pat_list pre_vl in
+		    true
+	      | _ -> false
 	 ))
     | P.MIntP (int64, _) ->
 	(P.MIntP (int64, T.implicit_loc),
@@ -471,9 +487,9 @@ and scan_pattern p =
 	 (failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
     | P.Irref pat ->
 	(P.Irref (to_pat_for_hash pat),
-	 (fun env exp ->
-	    bind_pat env pat (Thunk (exp, env));
-	    true))
+	 (fun env varref ->
+	    let _ = bind_pat_with_ref env pat varref in
+	      match_p pat env varref))
 
     (*     | P.Pat0 of pat op2list_patf *)
     (*     | P.Pat1 of pat op2list_patf *)
