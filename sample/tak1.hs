@@ -19,15 +19,13 @@
 --       	    (tak (1- y) z x)
 --       	    (tak (1- z) x y)))))
 
-tarai x y z
+taky x y z 
     | x <= y = y
-    | True   = tarai
-               (tarai (x - 1) y z)
-               (tarai (y - 1) z x)
-               (tarai (z - 1) x y)
+    | True   = taky
+               (taky (x - 1) y z)
+               (taky (y - 1) z x)
+               (taky (z - 1) x y)
 
---main = print (tarai 2 1 1)
-main = print (tarai 1 1 (1 + 0))
---main = print (tarai 5 1 1)
---main = print (tarai 0 0 0)
---main = print (tarai 10 3 1)
+main = print (taky 3 2 1)
+--main = print (taky 0 0 0)
+--main = print (taky 10 3 1)

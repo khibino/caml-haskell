@@ -38,8 +38,9 @@ let load_program pdata_queue =
 
 (* type 'module_e program_buffer = 'module_e PD.t *)
 
+(* (T.loc ID.id * ) *)
 type 'module_e eval_buffer = {
-  pat_tbl : (P.pat, 'module_e pre_value ref) H.t;
+  sym_tab : (T.loc ID.id, 'module_e pre_value ref) H.t;
   program : 'module_e program_buffer;
 }
 
@@ -56,10 +57,10 @@ and 'module_e value =
       (* arguemnt-pattern-list, expression, environment *)
   | Primitive of ('module_e value list -> 'module_e value)
 
-and 'module_e pre_value =
-    Thunk of E.t * 'module_e env_t
-  | ThunkA of E.aexp * 'module_e env_t
+and arg_exp = Exp of E.t | Atom of E.aexp
 
+and 'module_e pre_value =
+    Thunk of (P.pat * arg_exp * 'module_e env_t)
   | Thawed of 'module_e value
 
 let gPrelude = ref (Some "Prelude")
@@ -77,7 +78,7 @@ let primTable =
 				   begin
 				     match (x, y) with
 					 (SYN.Int (xi, _), SYN.Int (yi, _)) -> 
-					   (* Printf.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi); *)
+					   Printf.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi);
 					   Literal (SYN.Int ((i64f xi yi), T.implicit_loc))
 				       | (SYN.Int (xi, _), SYN.Float (yf, _)) -> Literal (SYN.Float ((floatf (Int64.to_float xi) yf), T.implicit_loc))
 				       | (SYN.Float (xf, _), SYN.Int (yi, _)) -> Literal (SYN.Float ((floatf xf (Int64.to_float yi)), T.implicit_loc))
@@ -91,7 +92,29 @@ let primTable =
 	   def_num_op2 "*" Int64.mul ( *.),
 	   def_num_op2 "/" Int64.div (/.)) in
 
-  let _ = H.add t "<=" (Primitive (function
+  let def_num_op2_bool name i64f floatf =
+    H.add t name (Primitive (function
+				 (Literal x) :: (Literal y) :: [] ->
+				   if
+				     begin
+				       match (x, y) with
+					   (SYN.Int (xi, _), SYN.Int (yi, _)) ->
+					     Printf.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi);
+					     i64f xi yi
+					 | (SYN.Int (xi, _), SYN.Float (yf, _)) -> floatf (Int64.to_float xi) yf
+					 | (SYN.Float (xf, _), SYN.Int (yi, _)) -> floatf xf (Int64.to_float yi)
+					 | (SYN.Float (xf, _), SYN.Float (yf, _)) -> floatf xf yf
+					 | _ -> failwith (err_pref ^ name)
+				     end
+				   then valTrue else valFalse
+
+			       | _ -> failwith (err_pref ^ name))) in
+
+  let _ = (def_num_op2_bool "<=" (<=) (<=),
+	   def_num_op2_bool ">=" (>=) (>=),
+	   def_num_op2_bool "==" (==) (==),
+	   def_num_op2_bool "/=" (<>) (<>)) in
+    (* H.add t "<=" (Primitive (function
 				       (Literal x) :: (Literal y) :: [] ->
 					 if
 					   begin
@@ -106,13 +129,13 @@ let primTable =
 					   end
 					 then valTrue else valFalse
 
-				     | _ -> failwith (err_pref ^ "<="))) in
+				     | _ -> failwith (err_pref ^ "<="))) in *)
 				       
     
-  let _ = H.add t "error" (Primitive (function
+  let _ = H.add t "primError" (Primitive (function
 					  (Literal (SYN.String m)) :: [] ->
 					    failwith ("error: " ^ (fst m))
-					| _ -> failwith (err_pref ^ "error"))) in
+					| _ -> failwith (err_pref ^ "primError"))) in
 
   let _ = H.add t "print" (Primitive (function
 					  (Literal (SYN.Int (i, _))) :: [] -> print_endline (Int64.to_string i); IO
@@ -123,12 +146,12 @@ let primTable =
 
 
 let eval_buffer_create prog =
-  { pat_tbl = H.create 32; 
+  { sym_tab = H.create 32; 
     program = prog; }
 
 let env_top env = L.hd env
 
-let env_top_symtab env = (env_top env).pat_tbl
+let env_top_symtab env = (env_top env).sym_tab
 
 let env_create pd : 'module_e env_t =
   (eval_buffer_create pd) :: []
@@ -138,9 +161,9 @@ let env_get_prelude env =
 
 let local_env env =
   let top = env_top env in
-  (* let n = H.copy top.pat_tbl in *)
-  let n = H.create 32 in
-    { top with pat_tbl = n} :: env
+  let n = H.copy top.sym_tab in
+(*   let n = H.create 32 in *)
+    { top with sym_tab = n} :: env
 
 let mk_literal lit =
   Literal lit
@@ -161,13 +184,15 @@ let dump_exp x =
   Std.dump x
 
 let lastErrPat = ref None
-let lastErrEnv = ref None
 
+(*
+let lastErrEnv = ref None
 
 let dump_pat_with_env x env =
   lastErrPat := Some x;
   lastErrEnv := Some env;
   Std.dump x
+*)
 
 let dump_pattern p =
   lastErrPat := Some p;
@@ -175,29 +200,40 @@ let dump_pattern p =
 
 let applyClosureStack = Stack.create ()
 
-let rec bind_pat_with_ref env pat varref =
-  let _ = H.add (env_top_symtab env) (to_pat_for_hash pat) varref in
+let rec bind_id_core env id pv =
+  let varref = ref pv in
+  let _ = H.add (env_top_symtab env) (ID.unloc id) varref in
     varref
 
-and bind_pat env pat value =
-  bind_pat_with_ref env pat (ref value)
+and make_thunk env pat arg_exp =
+  match arg_exp with
+      Exp (exp)   -> make_thunk_exp env pat exp 
+    | Atom (aexp) -> make_thunk_atom_exp env pat aexp
 
+and bind_pat env pat arg_exp  =
+  bind_pat_with_thunk pat env (make_thunk env pat arg_exp)
+
+and apply_id env id =
+  H.find (env_top_symtab env) (ID.unloc id)
+
+(*
 and apply_pat env pat =
   let key = to_pat_for_hash pat in
   let rec match_rec env =
     match env with
 	[] -> (failwith (Printf.sprintf "pattern not found when eval: %s" (dump_pat_with_env pat env)))
       | ebuf :: next_env ->
-	  if H.mem ebuf.pat_tbl key then H.find ebuf.pat_tbl key
+	  if H.mem ebuf.sym_tab key then H.find ebuf.sym_tab key
 	  else
-	    let _ = H.iter (fun p may_thunk -> (* expanding pattern match *)
+	    let _ = H.iter (fun p may_thunk -> ( * expanding pattern match * )
 			      let varref = (eval_thunk_expand may_thunk) in
 				if match_p p env varref then ()
-				else failwith (Printf.sprintf "pattern not match: %s %s" (Std.dump p) (Std.dump varref))) ebuf.pat_tbl in
-	      if H.mem ebuf.pat_tbl key then H.find ebuf.pat_tbl key
+				else failwith (Printf.sprintf "pattern not match: %s %s" (Std.dump p) (Std.dump varref))) ebuf.sym_tab in
+	      if H.mem ebuf.sym_tab key then H.find ebuf.sym_tab key
 	      else match_rec next_env
   in
     match_rec env
+*)
 
 and arity_list_take l n =
   let rec take_rec buf rest nn =
@@ -209,52 +245,60 @@ and arity_list_take l n =
 	     (L.length l) n)
   in take_rec [] l n
 
-and apply_closure env closure aval_list =
+and apply_closure caller_env closure arg_exp_list =
   match closure with
-      Closure (apat_list, body_exp, env (* shadow caller env *)) ->
+      Closure (apat_list, body_exp, env) ->
 	Stack.push closure applyClosureStack;
-	let (loc_env, ac) = (local_env env, L.length aval_list) in
+	let (loc_env, ac) = (local_env env, L.length arg_exp_list) in
 	let (pbind_list, apat_rest) = arity_list_take apat_list ac in
-	let _  = L.map2 (fun pat v -> bind_pat loc_env pat v) pbind_list aval_list in
+	let _  = L.map2 (fun pat arg_exp -> bind_pat loc_env pat arg_exp) pbind_list arg_exp_list in
 	  if apat_rest = [] then eval_exp loc_env body_exp
 	  else mk_closure loc_env apat_rest body_exp
     | Primitive (prim_fun) ->
-	prim_fun (L.map (fun prev -> eval_thunk (ref prev)) aval_list)
+	prim_fun (L.map (fun exp -> snd (eval_thunk (make_thunk caller_env P.WCardP exp))) arg_exp_list)
     | x -> failwith (Printf.sprintf "apply_closure: Not closure value: %s" (Std.dump x))
 
-and eval_arg_atom_exp env =
+and make_thunk_atom_exp env pat =
   function
-      E.VarE (_) as atom_exp -> ThunkA (atom_exp, env)
+      E.VarE (_) as atom_exp -> Thunk (pat, Atom atom_exp, env)
     | E.ConsE (id) ->
 	let v = Cons (C.App (id, [])) in Thawed v
 	 
     | E.LiteralE (lit) -> let l = Literal lit in Thawed l
 
-    | E.ParenE (exp) -> eval_arg_exp env exp
+    | E.ParenE (exp) -> make_thunk_exp env pat exp
 
-    | E.TupleE (_) as atom_exp -> ThunkA (atom_exp, env)
+    | E.TupleE (_) as atom_exp -> Thunk (pat, Atom atom_exp, env)
 
-    | E.ListE (_) as atom_exp -> ThunkA (atom_exp, env)
+    | E.ListE (_) as atom_exp -> Thunk (pat, Atom atom_exp, env)
     | x -> failwith (Printf.sprintf "aexp: Not implemented: %s" (dump_aexp x))
 
-and eval_thunk_expand varref =
-  match !varref with
-      Thunk (e, tenv) ->
-	let v = eval_exp tenv e in
-	  varref := Thawed v;
+and eval_thunk pre_v =
+  match pre_v with
+      Thunk (pat, arg_exp, tenv) ->
+	let v = (match arg_exp with
+		     Exp e   -> eval_exp tenv e
+		   | Atom ae -> eval_atom_exp tenv ae) in
+	  (Some (pat, tenv), v)
+
+    | Thawed v -> (None, v)
+
+
+and eval_thunk_expand varref : 'a pre_value ref =
+  match eval_thunk !varref with
+      (Some (pat, tenv),  v) ->
+	let must_true = match_p pat tenv v in
+	let _ = assert must_true in
 	  varref
+    | (None, v) ->
+	varref
 
-    | ThunkA (ae, tenv) ->
-	let v = eval_atom_exp tenv ae in
-	  varref := Thawed v;
-	  varref
-
-    | Thawed v -> varref
-
-and eval_thunk varref =
+(*
+and eval_thunk (varref : 'a pre_value ref) =
   match !(eval_thunk_expand varref) with
       Thawed v -> v
     | _ -> failwith (Printf.sprintf "eval_thunk: Bug?: %s" (Std.dump varref))
+*)
 
 and eval_atom_exp env =
   function
@@ -262,8 +306,8 @@ and eval_atom_exp env =
 	(if H.mem primTable id.ID.name then
 	   (H.find primTable id.ID.name)
 	 else
-	   let varref = apply_pat env (P.VarP id) in
-	     eval_thunk varref)
+	   let varref = apply_id env id in
+	     eval_thunk_expand varref)
 
     | E.ConsE (id) ->
 	let v = Cons (C.App (id, [])) in v
@@ -272,9 +316,9 @@ and eval_atom_exp env =
 
     | E.ParenE (exp) -> eval_exp env exp
 
-    | E.TupleE (el) -> Tuple (L.map (fun e -> eval_arg_exp env e) el)
+    | E.TupleE (el) -> Tuple (L.map (fun e -> make_thunk_exp env P.WCardP e) el)
 
-    | E.ListE (el) -> List (L.map (fun e -> eval_arg_exp env e) el)
+    | E.ListE (el) -> List (L.map (fun e -> make_thunk_exp env P.WCardP e) el)
 
     | x -> failwith (Printf.sprintf "aexp: Not implemented: %s" (dump_aexp x))
 
@@ -284,7 +328,7 @@ and eval_func_exp env =
 	eval_atom_exp env aexp
 
     | E.FappE (fexp, aexp) -> 
-	apply_closure env (eval_func_exp env fexp) (L.map (fun e -> eval_arg_atom_exp env e) [aexp])
+	apply_closure env (eval_func_exp env fexp) [(Atom aexp)]
 
     | E.FappEID -> failwith ("BUG: E.FappEID found.")
 
@@ -306,7 +350,7 @@ and eval_exp env =
 	   | E.FexpE fexp -> eval_func_exp env fexp
 
 	   | E.VarOp2E (op, lexp, rexp) ->
-	       apply_closure env (eval_atom_exp env (E.VarE op)) (L.map (fun e -> eval_arg_exp env e) [lexp; rexp])
+	       apply_closure env (eval_atom_exp env (E.VarE op)) [(Exp lexp); (Exp rexp)]
 
 	   | E.LetE (decl_list, exp) -> 
 	       eval_exp (decl_list_local_env env eval_decl decl_list) exp
@@ -320,17 +364,17 @@ and eval_exp env =
 	       Bottom
 	   | E.CaseE (exp, (CA.Simple (pat, case_exp, [])) :: alt_list) ->
 	       let loc_env = local_env env in
-	       let pv = bind_pat loc_env pat (Thunk (exp, loc_env)) in
-		 if match_p pat loc_env (eval_thunk_expand pv) then
+	       let pv = bind_pat loc_env pat (Exp exp) in
+		 if match_p pat loc_env (eval_thunk_expand (ref pv)) then
 		   eval_exp loc_env case_exp
 		 else
 		   eval_exp env (E.Top (E.CaseE (exp, alt_list), None))
 
 	   | x -> failwith (Printf.sprintf "exp: Not implemented: %s" (dump_exp x)))
 
-and eval_arg_exp env =
+and make_thunk_exp env pat =
   function
-      E.Top (exp, _) -> eval_arg_exp env exp
+      E.Top (exp, _) -> make_thunk_exp env pat exp
 
     | E.LambdaE (apat_list, exp) ->
 	let c = mk_closure env apat_list exp in
@@ -338,7 +382,7 @@ and eval_arg_exp env =
     | E.FexpE (E.FfunE (E.LiteralE lit)) ->
 	let l = mk_literal lit in
 	  Thawed l
-    | nv_exp -> Thunk (nv_exp, env)
+    | nv_exp -> Thunk (pat, Exp nv_exp, env)
 
 and pre_eval_rhs env rhs =
   let where_env w = match w with None -> env | Some dl -> (decl_list_local_env env eval_decl dl) in
@@ -360,12 +404,12 @@ and pre_eval_rhs env rhs =
     ((fun funlhs ->
 	let _ = match funlhs with
 	    D.FunDecLV (sym, apat_list) ->
-	      bind_pat env (P.VarP sym) (Thawed (mk_closure env apat_list ev_exp))
+	      bind_id_core env sym (Thawed (mk_closure env apat_list ev_exp))
 	  | D.Op2Pat (op, (arg1, arg2)) ->
-	      bind_pat env (P.VarP op) (Thawed (mk_closure env [arg1; arg2] ev_exp))
+	      bind_id_core env op (Thawed (mk_closure env [arg1; arg2] ev_exp))
 	  | x -> failwith (Printf.sprintf "funlhs: Not implemented: %s" (Std.dump x))
 	in ()),
-     (fun pat -> let _ = bind_pat env pat (Thunk (ev_exp, env)) in () ))
+     (fun pat -> let _ = bind_pat env pat (Exp ev_exp) in () ))
 
 and eval_gendecl env _ = ()
 
@@ -431,77 +475,96 @@ and scan_pattern p =
   match p with
       P.PlusP (id, i64, _) ->
 	(P.PlusP ((ID.unloc id), i64, T.implicit_loc),
-	 (failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
+	 ((fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))),
+	  (fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
+	)
     | P.VarP (id) ->
 	(P.VarP (ID.unloc id),
-	 (* (fun env exp ->
-	    let _ = bind_pat env (P.VarP (id)) (Thunk (exp, env)) in
-	      true
-	 ) *)
-	 (fun env varref -> true)
+	 ((fun env thunk -> let _ = bind_id_core env id thunk in thunk),
+	  (fun env varref -> (true, varref)))
 	)
     | P.AsP (id, pat) ->
 	(P.AsP (ID.unloc id, to_pat_for_hash pat),
-	 (fun env varref ->
-	    let _ = bind_pat_with_ref env (P.VarP (id)) varref in
-	    let _ = bind_pat_with_ref env pat varref in
-	      match_p pat env varref)
-	 (* (failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))) *)
+	 ((fun env thunk ->
+	     let _ = bind_id_core env id thunk in
+	       bind_pat_with_thunk pat env thunk),
+	  (fun env varref ->
+	     let (p, sub_varref) = match_p pat env varref in
+	     let _ = varref := !sub_varref in
+	       (p, varref)))
 	)
     | P.ConP (id, pat_list) ->
 	(P.ConP (ID.unloc id, L.map to_pat_for_hash pat_list),
-	 (failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
+	 ((fun env thunk -> let _ = L.map (fun p -> bind_pat_with_thunk p env thunk) pat_list in thunk),
+	  (fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
+	)
     | P.LabelP (id, fpat_list) ->
 	(P.LabelP (ID.unloc id, L.map (fun (id, pat) -> (ID.unloc id, pat)) fpat_list),
-	 (failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
+	 ((fun env thunk -> let _ = L.map (fun (id, p) -> bind_pat_with_thunk p env thunk) fpat_list in thunk),
+	  (fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
+	)
     | P.LiteralP literal ->
 	(P.LiteralP (SYN.unloc_literal literal),
-	 (failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
+	 ((fun _ thunk -> thunk),
+	  (fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
+	)
     | P.WCardP ->
 	(P.WCardP,
-	 (fun _ _ -> true))
+	 ((fun _ thunk -> thunk),
+	  (fun _ varref -> (true, varref)))
+	)
     | P.TupleP pat_list ->
 	(P.TupleP (L.map to_pat_for_hash pat_list),
-	 (fun env varref ->
-	    match !varref with
-		Thawed (Tuple pre_vl) ->
-		  let _ = L.map2 (fun pat pre_v -> bind_pat env pat pre_v) pat_list pre_vl in
-		    true
-	      | _ -> false)
-	 (* (failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))) *)
+	 ((fun env thunk -> let _ = L.map (fun p -> bind_pat_with_thunk p env thunk) pat_list in thunk),
+	  (fun env varref ->
+	     match eval_thunk !varref with
+		 Tuple pre_vl ->
+		   (L.fold_left2 (fun (snap_mp, Tuple snap) p pre_v ->
+				    let (mp, result) = match_p p env pre_v in
+				      ((snap_mp && mp), Tuple (result :: snap))) (true, Tuple [])  pat_list pre_vl)
+	       | _ -> false))
 	)
     | P.ListP pat_list ->
 	(P.ListP (L.map to_pat_for_hash pat_list),
-	 (fun env varref ->
-	    match !varref with
-		Thawed (List pre_vl) ->
-		  let _ = L.map2 (fun pat pre_v -> bind_pat env pat pre_v) pat_list pre_vl in
-		    true
-	      | _ -> false
-	 ))
+	 ((fun env thunk -> let _ = L.map (fun p -> bind_pat_with_thunk p env thunk) pat_list in thunk),
+	  (fun env varref ->
+	     match eval_thunk !varref with
+		 List pre_vl ->
+		   (L.fold_left2 (fun (snap_mp, List snap) p pre_v ->
+				    let (mp, result) = match_p p env pre_v in
+				      ((snap_mp && mp), List (result :: snap))) (true, List [])  pat_list pre_vl)
+	       | _ -> false))
+	)
     | P.MIntP (int64, _) ->
 	(P.MIntP (int64, T.implicit_loc),
-	 (failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
+	 ((fun _ thunk -> thunk),
+	  (failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
+	)
     | P.MFloatP (float, _) ->
 	(P.MFloatP (float, T.implicit_loc),
-	 (failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
+	 ((fun _ thunk -> thunk),
+	  (fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
+	)
     | P.Irref pat ->
 	(P.Irref (to_pat_for_hash pat),
-	 (fun env varref ->
-	    let _ = bind_pat_with_ref env pat varref in
-	      match_p pat env varref))
+	 ((fun env thunk -> bind_pat_with_thunk pat env thunk),
+	  (fun env varref -> match_p pat env varref))
+	)
 
     (*     | P.Pat0 of pat op2list_patf *)
     (*     | P.Pat1 of pat op2list_patf *)
 
     | P.ConOp2P (id, pat1, pat2) ->
 	(P.ConOp2P (ID.unloc id, (to_pat_for_hash pat1), (to_pat_for_hash pat2)),
-	 (failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
+	 ((fun env thunk -> let _ = (bind_pat_with_thunk pat1 env thunk, bind_pat_with_thunk pat2 env thunk) in thunk),
+	  (fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern p))))
+	)
 
     | _ -> failwith ("Not converted Pat0 or Pat1 found. parser BUG!!")
 
 and to_pat_for_hash p = fst (scan_pattern p)
-and match_p p = snd (scan_pattern p)
+and bind_pat_with_thunk p = fst (snd (scan_pattern p))
+and match_p p = snd (snd (scan_pattern p))
 
 let eval_test fn =
   let prog = load_program (LO.parse_files_with_prelude [fn]) in
