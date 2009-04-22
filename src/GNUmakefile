@@ -1,17 +1,16 @@
+PACKS=
+CMAS= str,extLib
+#OCAMLC=ocamlfind ocamlc -package ${PACKS}
+#OCAMLC=ocamlfind ocamlc -g -I $(shell ocamlfind query extlib)
 
-include ocaml_basic.mk
+include ocaml_basic.gmk
 
-include ocaml_targets.mk
-
-extra_lib_packages = extlib
-
-extra_lib_archives = extLib
+ocaml_extra_load_path = -I $(shell ocamlfind query extlib)
 
 scratch_sources = \
-	onceAssoc.ml \
-	token.ml \
-	parseErr.ml \
+	token.ml onceAssoc.ml \
 	syntax.ml \
+	parseErr.ml \
 	parser.ml \
 	hsStr.ml \
 	lexer0.ml \
@@ -19,27 +18,19 @@ scratch_sources = \
 	layout.ml \
 	eval.ml
 
-##	fv.ml \
-
-
-sources = \
-	$(scratch_sources) \
-	util.ml \
-	lex0_main.ml \
-	loin_main.ml \
-	layout_main.ml \
-	parse_main.ml \
-	fixity_main.ml \
-	eval_main.ml
-
 mlis = parser.mli
-cmis = $(sources:.ml=.cmi)
+
+sources = $(scratch_sources)
 
 scratch_byte_objs = $(scratch_sources:.ml=.cmo)
 scratch_nat_objs = $(scratch_sources:.ml=.cmx)
 
-byte_objs = $(sources:.ml=.cmo)
+scratch_byte_lib = scratch.cma
+scratch_nat_lib = scratch.cmxa scratch.a
 
+
+%.byte:
+	ocamlbuild -ocamlc '${OCAMLC}' -lflags -I,/usr/lib/ocaml/3.10.0/extlib -libs ${CMAS} $@
 
 %.lex0: %.hs
 	./_build/lex0_main.byte < $< > $@ 2>&1
@@ -53,23 +44,31 @@ byte_objs = $(sources:.ml=.cmo)
 %.parse: %.hs
 	./_build/parse_main.byte < $< > $@ 2>&1
 
-all: scratch.cma lex0_main.byte loin_main.byte layout_main.byte parse_main.byte fixity_main.byte eval_main.byte
+all: eval.cma lex0_main.byte loin_main.byte layout_main.byte parse_main.byte fixity_main.byte eval_main.byte
+
+test: clean all Prelude.lex0 Prelude.loin Prelude.layout Prelude.parse
 
 .depends: $(mlis)
 	$(ocamldep) $(sources) $(mlis) > $@
 
--include .depends
-
-test: clean all Prelude.lex0 Prelude.loin Prelude.layout Prelude.parse
-
-eval_main.byte: scratch.cma eval_main.cmo
-	$(BYTE_LINK.cmo) -o $@ $(byte_libs) $^
-
-scratch.cma: $(scratch_byte_objs)
+$(scratch_byte_lib): $(scratch_byte_objs)
 	$(ocamlc) -a -o $@ $^
 
+$(scratch_nat_lib): $(scratch_nat_objs)
+	$(ocamlopt) -a -o $@ $^
+
+# eval.cma:
+# 	ocamlbuild -verbose 1 -yaccflags -v -ocamlc '${OCAMLC}' eval.cma
+
+# layout.cma:
+# 	ocamlbuild -yaccflags -v -ocamlc '${OCAMLC}' layout.cma
+
+#	ocamlbuild -yaccflags -v -ocamlc '${OCAMLC}' lexer0.cmo
+
+include .depends
 
 clean:
-	$(RM) $(cmis) $(byte_objs)
-	$(RM) $(mlis)
+##	ocamlbuild -clean
+	$(RM) *.cmo parser.mli parser.ml lexer0.ml hsStr.ml
+	$(RM) .depends
 	$(RM) Prelude.lex0 Prelude.loin Prelude.layout Prelude.parse
