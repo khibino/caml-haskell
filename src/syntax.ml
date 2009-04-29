@@ -181,6 +181,8 @@ struct
     loc : 'loc;
   }
 
+  type idwl = T.loc id
+
   let make_id_core n q loc = {
     name = n;
     qual = q;

@@ -602,7 +602,7 @@ aexp_list:
 */
 
 aexp_list:
-  aexp aexp_list  { fun fexp -> $2 (E.FappE (fexp, $1)) }
+  aexp aexp_list  { fun fexp -> $2 (E.FappE (fexp, $1)) } /*  */
 | aexp  { fun fexp -> E.FappE (fexp, $1) }
 ;
 /* fexp -- FexpE (fexp) */
