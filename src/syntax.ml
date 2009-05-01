@@ -758,6 +758,8 @@ struct
     in
       simplify (aexpl_lambda FappEID)
 
+  let make_aexp_exp aexp = FexpE (FfunE aexp)
+
   let make_var_exp name pd =
     VarE (ID.make_id_core name (ID.Qual pd.PD.mn_ref) T.implicit_loc)
 

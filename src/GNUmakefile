@@ -16,7 +16,7 @@ scratch_sources = \
 	lexer0.ml \
 	lStream.ml \
 	layout.ml \
-##	eval.ml
+	eval.ml
 
 
 mlis = parser.mli

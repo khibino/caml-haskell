@@ -602,12 +602,12 @@ aexp_list:
 */
 
 aexp_list:
-  aexp aexp_list  { fun fexp -> $2 (E.FappE (fexp, $1)) } /*  */
+  aexp aexp_list  { fun fexp -> $2 (E.FappE (fexp, $1)) }
 | aexp  { fun fexp -> E.FappE (fexp, $1) }
 ;
-/* fexp -- FexpE (fexp) */
-/* fexp ae1 -- FappE (FexpE (fexp), ae1) */
-/* fexp ae1 ae2 -- FappE (FappE (FexpE (fexp), ae1), ae2) */
+/* fexp -- FfunE (fexp) */
+/* fexp ae1 -- FappE (FfunE (fexp), ae1) */
+/* fexp ae1 ae2 -- FappE (FappE (FfunE (fexp), ae1), ae2) */
 
 /*
  aexp  	 ->  	 qvar  	 (variable)

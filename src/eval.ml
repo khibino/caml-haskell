@@ -56,11 +56,19 @@ and 'module_e value =
       (* arguemnt-pattern-list, expression, environment *)
   | Primitive of ('module_e value list -> 'module_e value)
 
-(* and arg_exp = Exp of E.t | Atom of E.aexp *)
+(* and arg_exp = Exp of E.t | Atom of E.aexp *) (* E.make_aexp_exp : (E.aexp -> E.exp) *)
 
 and 'module_e pre_value =
     Thunk of (P.pat * E.t * 'module_e env_t)
   | Thawed of 'module_e value
+
+let dummy_eval (exp : E.t) (env : 'module_e env_t) =
+  Bottom
+
+let expand_thunk eval_fun thunk =
+  match thunk with
+      Thunk (p, exp, env) -> Thawed (eval_fun exp env)
+    | thawed -> thawed
 
 let gPrelude = ref (Some "Prelude")
 let simple_cons name = Cons (C.App (ID.make_id_core name (ID.Qual gPrelude) T.implicit_loc, []))
@@ -204,6 +212,7 @@ let dump_pattern p =
   Std.dump p
 
 (* Visitor for Pattern *)
+(* 
 let scan_pattern p =
   match p with
       P.PlusP (id, i64, _) ->
@@ -298,3 +307,5 @@ let scan_pattern p =
 and path_hash p = fst (scan_pattern p) (* rename from to_pat_for_hash *)
 and bind_pat_with_thunk p = fst (snd (scan_pattern p))
 and match_p p = snd (snd (scan_pattern p))
+
+*)
