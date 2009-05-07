@@ -625,11 +625,13 @@ struct
     | FunDec of ('exp funlhs * 'exp rhs)
     | PatFunDec of (P.pat * 'exp rhs)
 
+  (* Instance *)
   and 'exp i =
       FunDecI of ('exp funlhs * 'exp rhs)
     | BindI of (T.loc ID.id * 'exp rhs)
     | EmptyI
 
+  (* Class *)
   and 'exp c =
       GenDeclC of gendecl
     | FunDecC of ('exp funlhs * 'exp rhs)
@@ -699,6 +701,7 @@ struct
   module ID = Identifier 
   module P = Pattern
   module DS = DoStmt
+  module A = Array
 
   type mod_data = PD.module_data
 
@@ -754,11 +757,20 @@ struct
 	  FappE (FappEID, x) -> FfunE x
 	| FappE (fexp, aexp) -> FappE ((simplify fexp), aexp)
 	| FfunE _ -> failwith "Already converted fexp(FfunE) found. parser BUG!!"
+
 	| FappEID -> failwith "Already converted fexp(FappEID) found. parser BUG!!"
     in
       simplify (aexpl_lambda FappEID)
 
   let make_aexp_exp aexp = FexpE (FfunE aexp)
+
+  let cons_aexp_list cons_fexp =
+    let rec cons_aexp_list exp arg_list =
+      match exp with
+	  FfunE (ConsE id) -> Some (id, (A.of_list arg_list))
+	| FappE (exp, a)   -> cons_aexp_list exp (a :: arg_list)
+	| _                -> None
+    in cons_aexp_list cons_fexp []
 
   let make_var_exp name pd =
     VarE (ID.make_id_core name (ID.Qual pd.PD.mn_ref) T.implicit_loc)
