@@ -423,13 +423,13 @@ struct
   type mod_data = PD.module_data
 
   type symbols =
-      List of T.loc ID.id list
+      List of ID.idwl list
     | All
 
   type import =
-      IVar of T.loc ID.id
-    | ICons of (T.loc ID.id * symbols)
-    | IClass of (T.loc ID.id * symbols)
+      IVar of ID.idwl
+    | ICons of (ID.idwl * symbols)
+    | IClass of (ID.idwl * symbols)
 
   type impspec =
       Imp of import list
@@ -440,14 +440,14 @@ struct
     | Qual
 
   type impdecl =
-      IDec of (qual * T.loc ID.id * T.loc ID.id option * impspec option)
+      IDec of (qual * ID.idwl * ID.idwl option * impspec option)
     | IEmpty
 
   type export =
-      EVar of T.loc ID.id
-    | ECons of (T.loc ID.id * symbols)
-    | EClass of (T.loc ID.id * symbols)
-    | EMod of T.loc ID.id
+      EVar of ID.idwl
+    | ECons of (ID.idwl * symbols)
+    | EClass of (ID.idwl * symbols)
+    | EMod of ID.idwl
 
 end
 
@@ -459,18 +459,18 @@ struct
   type mod_data = PD.module_data
 
   type 'pat op2list_opf =
-      Op2F of (T.loc ID.id * 'pat op2list_patf)
+      Op2F of (ID.idwl * 'pat op2list_patf)
     | Op2End
   and 'pat op2list_patf =
       PatF of ('pat * 'pat op2list_opf)
     | Op2NoArg
 
   type pat =
-      PlusP of (T.loc ID.id * int64 * T.loc)
-    | VarP of T.loc ID.id
-    | AsP of T.loc ID.id * pat
-    | ConP of T.loc ID.id * pat list
-    | LabelP of T.loc ID.id * (T.loc ID.id * pat) list
+      PlusP of (ID.idwl * int64 * T.loc)
+    | VarP of ID.idwl
+    | AsP of ID.idwl * pat
+    | ConP of ID.idwl * pat list
+    | LabelP of ID.idwl * (ID.idwl * pat) list
     | LiteralP of T.loc literal
     | WCardP
     | TupleP of pat list
@@ -482,7 +482,7 @@ struct
     | Pat0 of pat op2list_patf
     | Pat1 of pat op2list_patf
 
-    | ConOp2P of (T.loc ID.id * pat * pat)
+    | ConOp2P of (ID.idwl * pat * pat)
 
 (*
 pati  	 ->  	 pati+1 [qconop(n,i) pati+1]
@@ -541,11 +541,11 @@ struct
     | FunC
     | ListC
     | UnitC
-    | Qtycon of T.loc ID.id
+    | Qtycon of ID.idwl
 
   type a_type =
       ConsAT of cons
-    | VarAT of T.loc ID.id
+    | VarAT of ID.idwl
     | TupleAT of typ list
     | ListAT of typ
     | AT of typ
@@ -575,13 +575,13 @@ struct
   type mod_data = PD.module_data
 
   type con =
-      App of (T.loc ID.id * Type.arity list)
-    | Op2 of (T.loc ID.id * Type.arity * Type.arity)
-    | Label of (T.loc ID.id * (T.loc ID.id list * Type.arity) list)
+      App of (ID.idwl * Type.arity list)
+    | Op2 of (ID.idwl * Type.arity * Type.arity)
+    | Label of (ID.idwl * (ID.idwl list * Type.arity) list)
 
   type newcon =
-      Simple of (T.loc ID.id * Type.a_type)
-    | WithFLD of (T.loc ID.id * T.loc ID.id * Type.typ)
+      Simple of (ID.idwl * Type.a_type)
+    | WithFLD of (ID.idwl * ID.idwl * Type.typ)
 end
 
 module Context =
@@ -592,8 +592,8 @@ struct
   type mod_data = PD.module_data
 
   type clazz =
-      Class of (T.loc ID.id * T.loc ID.id)
-    | ClassApp of (T.loc ID.id * T.loc ID.id * Type.a_type list)
+      Class of (ID.idwl * ID.idwl)
+    | ClassApp of (ID.idwl * ID.idwl * Type.a_type list)
 
   type context = clazz list
 end
@@ -606,10 +606,10 @@ struct
   type mod_data = PD.module_data
 
   type cons_arity =
-      Type of (Type.cons * T.loc ID.id list)
-    | Tuple of (T.loc ID.id list)
-    | List of T.loc ID.id
-    | Fun of (T.loc ID.id * T.loc ID.id)
+      Type of (Type.cons * ID.idwl list)
+    | Tuple of (ID.idwl list)
+    | List of ID.idwl
+    | Fun of (ID.idwl * ID.idwl)
 end
 
 module Decl =
@@ -623,8 +623,8 @@ struct
   type mod_data = PD.module_data
 
   type gendecl =
-      TypeSig of (T.loc ID.id list * Context.context option * Type.typ)
-    | Fixity of (fixity * T.loc ID.id list)
+      TypeSig of (ID.idwl list * Context.context option * Type.typ)
+    | Fixity of (fixity * ID.idwl list)
     | Empty
 
   type 'exp decl =
@@ -635,22 +635,22 @@ struct
   (* Instance *)
   and 'exp i =
       FunDecI of ('exp funlhs * 'exp rhs)
-    | BindI of (T.loc ID.id * 'exp rhs)
+    | BindI of (ID.idwl * 'exp rhs)
     | EmptyI
 
   (* Class *)
   and 'exp c =
       GenDeclC of gendecl
     | FunDecC of ('exp funlhs * 'exp rhs)
-    | BindC of (T.loc ID.id * 'exp rhs)
+    | BindC of (ID.idwl * 'exp rhs)
 
   and 'exp rhs =
       Rhs of ('exp * 'exp decl list option)
     | RhsWithGD of ('exp gdrhs * 'exp decl list option)
 
   and 'exp funlhs =
-      FunDecLV of (T.loc ID.id * P.pat list)
-    | Op2Pat of (T.loc ID.id * (P.pat * P.pat))
+      FunDecLV of (ID.idwl * P.pat list)
+    | Op2Pat of (ID.idwl * (P.pat * P.pat))
     | NestDec of ('exp funlhs * P.pat list)
 
   let op2lhs_op lhsd = fst lhsd
@@ -664,10 +664,10 @@ struct
 
   type 'exp top =
       Type of (Type.typ * Type.typ)
-    | Data of (Context.context * Type.typ * Constructor.con list * T.loc ID.id list)
-    | NewType of (Context.context * Type.typ * Constructor.newcon * T.loc ID.id list)
-    | Class of (Context.context * T.loc ID.id * T.loc ID.id * 'exp c list)
-    | Instance of (Context.context * T.loc ID.id * Instance.cons_arity * 'exp i list)
+    | Data of (Context.context * Type.typ * Constructor.con list * ID.idwl list)
+    | NewType of (Context.context * Type.typ * Constructor.newcon * ID.idwl list)
+    | Class of (Context.context * ID.idwl * ID.idwl * 'exp c list)
+    | Instance of (Context.context * ID.idwl * Instance.cons_arity * 'exp i list)
     | Default of Type.typ list
     | Decl of 'exp decl
 
@@ -713,16 +713,16 @@ struct
   type mod_data = PD.module_data
 
   type 'exp op2list_opf =
-      Op2F of (T.loc ID.id * 'exp op2list_expf)
+      Op2F of (ID.idwl * 'exp op2list_expf)
     | Op2End
   and 'exp op2list_expf =
       ExpF of ('exp * 'exp op2list_opf)
-(*     | UniOpF of (T.loc ID.id * 'exp * 'exp op2list_opf) *)
+(*     | UniOpF of (ID.idwl * 'exp * 'exp op2list_opf) *)
     | Op2NoArg
 
   type aexp =
-      VarE of T.loc ID.id (* qvar *)
-    | ConsE of T.loc ID.id (* gcon *)
+      VarE of ID.idwl (* qvar *)
+    | ConsE of ID.idwl (* gcon *)
     | LiteralE of T.loc literal
     | ParenE of t
     | TupleE of t list
@@ -733,11 +733,11 @@ struct
     | MayLeftSecE of t op2list_expf
     | MayRightSecE of t op2list_opf
 
-    | LeftSecE of (t * T.loc ID.id)
-    | RightSecE of (T.loc ID.id * t)
+    | LeftSecE of (t * ID.idwl)
+    | RightSecE of (ID.idwl * t)
 
-    | LabelConsE of (T.loc ID.id * (T.loc ID.id, t) ordh)
-    | LabelUpdE of (aexp * (T.loc ID.id, t) ordh)
+    | LabelConsE of (ID.idwl * (ID.idwl, t) ordh)
+    | LabelUpdE of (aexp * (ID.idwl, t) ordh)
 
   and fexp =
       FfunE of aexp
@@ -756,7 +756,7 @@ struct
     | Top of (t * (Type.typ * Context.context option) option)
 
     | Minus of (t)
-    | VarOp2E of (T.loc ID.id * t * t)
+    | VarOp2E of (ID.idwl * t * t)
 
   let make_fexp aexpl_lambda =
     let rec simplify =
