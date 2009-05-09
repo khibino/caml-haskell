@@ -8,7 +8,8 @@ include ocaml_basic.gmk
 ocaml_extra_load_path = -I $(shell ocamlfind query extlib)
 
 scratch_sources = \
-	token.ml onceAssoc.ml \
+	onceAssoc.ml orderedHash.ml \
+	token.ml \
 	syntax.ml \
 	parseErr.ml \
 	parser.ml \

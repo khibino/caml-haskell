@@ -1,5 +1,6 @@
 %{
   module F = Printf
+  module OH = OrderedHash
 
   module TK = Token
   module S = Syntax
@@ -644,9 +645,9 @@ aexp:
 | SP_LEFT_PAREN op2_left_section SP_RIGHT_PAREN  { E.MayLeftSecE ($2) } 	/*(left section)*/
 | SP_LEFT_PAREN op2_right_section SP_RIGHT_PAREN  { E.MayRightSecE ($2) } 	/*(right section)*/
 
-| qcon SP_LEFT_BRACE fbind_list SP_RIGHT_BRACE  { E.LabelConsE ($1, $3) } 	/*(labeled construction, n>=1)*/
-| qcon SP_LEFT_BRACE SP_RIGHT_BRACE  { E.LabelConsE ($1, []) } 	/*(labeled construction, n=0)*/
-| aexp SP_LEFT_BRACE fbind_list SP_RIGHT_BRACE  { E.LabelUpdE ($1, $3) } 	/*(labeled update, n >= 1)*/
+| qcon SP_LEFT_BRACE fbind_list SP_RIGHT_BRACE  { E.LabelConsE ($1, OH.of_list $3) } 	/*(labeled construction, n>=1)*/
+| qcon SP_LEFT_BRACE SP_RIGHT_BRACE  { E.LabelConsE ($1, OH.create 0) } 	/*(labeled construction, n=0)*/
+| aexp SP_LEFT_BRACE fbind_list SP_RIGHT_BRACE  { E.LabelUpdE ($1, OH.of_list $3) } 	/*(labeled update, n >= 1)*/
 ;
 
 exp_list:
@@ -710,7 +711,7 @@ stmt:
 ;
 
 fbind:
-  qvar KS_EQ exp { ($1, $3) }
+  qvar KS_EQ exp { (I.unloc $1, $3) }
 ;
 
 pat:

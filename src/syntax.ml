@@ -1,6 +1,9 @@
 module F = Printf
 module T = Token
 module L = List
+module OH = OrderedHash
+
+type ('k, 'v) ordh = ('k, 'v) OH.t
 
 type fixity_lnr =
     Infix
@@ -51,6 +54,9 @@ let unloc_literal  =
     | Float (f, _) -> Float (f, T.implicit_loc)
     | Char (c, _) -> Char (c, T.implicit_loc)
     | String (s, _) -> String (s, T.implicit_loc)
+
+let eq_literal aa bb =
+  (unloc_literal aa) = (unloc_literal bb)
 
 let must_be_int li err =
   match li with
@@ -205,6 +211,7 @@ struct
       loc
 
   let unloc id = { id with loc = T.implicit_loc }
+  let eq aa bb = (unloc aa) = (unloc bb)
 
   let make_id_with_mod data =
     let iwm = (fst data) in make_id iwm.T.modid iwm.T.id (snd data)
@@ -729,8 +736,8 @@ struct
     | LeftSecE of (t * T.loc ID.id)
     | RightSecE of (T.loc ID.id * t)
 
-    | LabelConsE of (T.loc ID.id * (T.loc ID.id * t) list)
-    | LabelUpdE of (aexp * (T.loc ID.id * t) list)
+    | LabelConsE of (T.loc ID.id * (T.loc ID.id, t) ordh)
+    | LabelUpdE of (aexp * (T.loc ID.id, t) ordh)
 
   and fexp =
       FfunE of aexp
