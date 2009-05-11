@@ -10,29 +10,29 @@
   let fix_position lexbuf =
     let newline pos =
       { pos with
-	  LX.pos_lnum = pos.LX.pos_lnum + 1;
-	  LX.pos_cnum = pos.LX.pos_cnum + 1;
-	  LX.pos_bol = pos.LX.pos_cnum + 1;
+          LX.pos_lnum = pos.LX.pos_lnum + 1;
+          LX.pos_cnum = pos.LX.pos_cnum + 1;
+          LX.pos_bol = pos.LX.pos_cnum + 1;
       } in
 
     let tab pos =
       { pos with
-	  LX.pos_cnum = pos.LX.pos_cnum + 8 - (pos.LX.pos_cnum - pos.LX.pos_bol) mod 8
+          LX.pos_cnum = pos.LX.pos_cnum + 8 - (pos.LX.pos_cnum - pos.LX.pos_bol) mod 8
       } in
 
     let other pos =
       { pos with
-	  LX.pos_cnum = pos.LX.pos_cnum + 1
+          LX.pos_cnum = pos.LX.pos_cnum + 1
       } in
 
     let rec fix_pos_rec pos str =
       let len = (String.length str) in
-	match (if len > 0 then (Some (str.[0]), String.sub str 1 (len - 1))
-	       else (None, "")) with
-	    (None, _) -> pos
-	  | (Some '\n', rest) -> fix_pos_rec (newline pos) rest
-	  | (Some '\t', rest) -> fix_pos_rec (tab pos) rest
-	  | (Some _, rest) -> fix_pos_rec (other pos) rest
+        match (if len > 0 then (Some (str.[0]), String.sub str 1 (len - 1))
+               else (None, "")) with
+            (None, _) -> pos
+          | (Some '\n', rest) -> fix_pos_rec (newline pos) rest
+          | (Some '\t', rest) -> fix_pos_rec (tab pos) rest
+          | (Some _, rest) -> fix_pos_rec (other pos) rest
     in
 (*     let before = dump_position lexbuf.LX.lex_curr_p in *)
     let _ = lexbuf.LX.lex_curr_p <- fix_pos_rec (LX.lexeme_start_p lexbuf) (LX.lexeme lexbuf) in
@@ -54,58 +54,58 @@
     let escexp = String.sub cexpr 1 ((String.length cexpr) - 1) in
     let fmatch exp str = Str.string_match (Str.regexp exp) str 0 in
       if fchar = '\\' then
-	match escexp with
-	    "NUL"   -> Some '\x00'
-	  | "SOH" | "^A"   -> Some '\x01'
-	  | "STX" | "^B"   -> Some '\x02'
-	  | "ETX" | "^C"   -> Some '\x03'
-	  | "EOT" | "^D"   -> Some '\x04'
-	  | "ENQ" | "^E"   -> Some '\x05'
-	  | "ACK" | "^F"   -> Some '\x06'
-	      
-	  | "BEL" | "^G" | "a"  -> Some '\x07'
-	  | "BS"  | "^H" | "b"  -> Some '\x08'
-	  | "HT"  | "^I" | "t"  -> Some '\t'
-	  | "LF"  | "^J" | "n"  -> Some '\n'
-	  | "VT"  | "^K" | "v"  -> Some '\x0b'
-	  | "FF"  | "^L" | "f"  -> Some '\x0c'
-	  | "CR"  | "^M" | "r"  -> Some '\r'
-	  | "SO"  | "^N"   -> Some '\x0e'
-	  | "SI"  | "^O"   -> Some '\x0f'
-	  | "DLE" | "^P"   -> Some '\x10'
-	      
-	  | "DC1" | "^Q"   -> Some '\x11'
-	  | "DC2" | "^R"   -> Some '\x12'
-	  | "DC3" | "^S"   -> Some '\x13'
-	  | "DC4" | "^T"   -> Some '\x14'
-	  | "NAK" | "^U"   -> Some '\x15'
-	  | "SYN" | "^V"   -> Some '\x16'
-	  | "ETB" | "^W"   -> Some '\x17'
-	  | "CAN" | "^X"   -> Some '\x18'
-	      
-	  | "EM"  | "^Y"   -> Some '\x19'
-	  | "SUB" | "^Z"   -> Some '\x1a'
-	  | "ESC" | "^["   -> Some '\x1b'
-	  | "FS"  | "^\\"  -> Some '\x1c'
-	  | "GS"  | "^]"   -> Some '\x1d'
-	  | "RS"  | "^^"   -> Some '\x1e'
-	  | "US"  | "^_"   -> Some '\x1f'
-	  | "SP"           -> Some ' '
+        match escexp with
+            "NUL"   -> Some '\x00'
+          | "SOH" | "^A"   -> Some '\x01'
+          | "STX" | "^B"   -> Some '\x02'
+          | "ETX" | "^C"   -> Some '\x03'
+          | "EOT" | "^D"   -> Some '\x04'
+          | "ENQ" | "^E"   -> Some '\x05'
+          | "ACK" | "^F"   -> Some '\x06'
+              
+          | "BEL" | "^G" | "a"  -> Some '\x07'
+          | "BS"  | "^H" | "b"  -> Some '\x08'
+          | "HT"  | "^I" | "t"  -> Some '\t'
+          | "LF"  | "^J" | "n"  -> Some '\n'
+          | "VT"  | "^K" | "v"  -> Some '\x0b'
+          | "FF"  | "^L" | "f"  -> Some '\x0c'
+          | "CR"  | "^M" | "r"  -> Some '\r'
+          | "SO"  | "^N"   -> Some '\x0e'
+          | "SI"  | "^O"   -> Some '\x0f'
+          | "DLE" | "^P"   -> Some '\x10'
+              
+          | "DC1" | "^Q"   -> Some '\x11'
+          | "DC2" | "^R"   -> Some '\x12'
+          | "DC3" | "^S"   -> Some '\x13'
+          | "DC4" | "^T"   -> Some '\x14'
+          | "NAK" | "^U"   -> Some '\x15'
+          | "SYN" | "^V"   -> Some '\x16'
+          | "ETB" | "^W"   -> Some '\x17'
+          | "CAN" | "^X"   -> Some '\x18'
+              
+          | "EM"  | "^Y"   -> Some '\x19'
+          | "SUB" | "^Z"   -> Some '\x1a'
+          | "ESC" | "^["   -> Some '\x1b'
+          | "FS"  | "^\\"  -> Some '\x1c'
+          | "GS"  | "^]"   -> Some '\x1d'
+          | "RS"  | "^^"   -> Some '\x1e'
+          | "US"  | "^_"   -> Some '\x1f'
+          | "SP"           -> Some ' '
 
-	  | "\\"           -> Some '\\'
-	  | "\""           -> Some '"'
-	  | "'"            -> Some '\''
+          | "\\"           -> Some '\\'
+          | "\""           -> Some '"'
+          | "'"            -> Some '\''
 
-	  | "DEL"          -> Some '\x7f'
+          | "DEL"          -> Some '\x7f'
 
-	  | _ when fmatch "^[0-9]+$" escexp
-	      -> Some (Char.chr (int_of_string escexp))
-	  | _ when fmatch "^[xX][0-9a-zA-Z]+$" escexp 
-	      -> Some (Char.chr (int_of_string ("0" ^ escexp)))
-	  | _ when fmatch "^[oO][0-7]+$" escexp
-	      -> Some (Char.chr (int_of_string ("0" ^ escexp)))
+          | _ when fmatch "^[0-9]+$" escexp
+              -> Some (Char.chr (int_of_string escexp))
+          | _ when fmatch "^[xX][0-9a-zA-Z]+$" escexp 
+              -> Some (Char.chr (int_of_string ("0" ^ escexp)))
+          | _ when fmatch "^[oO][0-7]+$" escexp
+              -> Some (Char.chr (int_of_string ("0" ^ escexp)))
 
-	  | _ -> None
+          | _ -> None
 
       else Some fchar
 
@@ -113,8 +113,8 @@
     let cstr = LX.lexeme lexbuf in
     let len = String.length cstr in
       match decode_cexpr (String.sub cstr 1 (len - 2)) with
-	  Some c -> c
-	| None   -> failwith (F.sprintf "Unkown char expression %s" cstr)
+          Some c -> c
+        | None   -> failwith (F.sprintf "Unkown char expression %s" cstr)
 
   let decode_string lexbuf =
     let sexpr = LX.lexeme lexbuf in
@@ -122,14 +122,14 @@
     let strlbuf = Lexing.from_string (String.sub sexpr 1 (len - 2)) in
     let rec decode result =
       match HsStr.char strlbuf with
-	  HsStr.Eos -> result
-	| HsStr.Char cstr ->
-	    if cstr = "\\&" then decode (result ^ "&")
-	    else decode (result ^ 
-			   match (decode_cexpr cstr) with
-			       None -> failwith (F.sprintf "Unkown char expression '%s' in literal string" cstr)
-			     | Some c -> (String.make 1 c))
-	| HsStr.Gap g -> decode result
+          HsStr.Eos -> result
+        | HsStr.Char cstr ->
+            if cstr = "\\&" then decode (result ^ "&")
+            else decode (result ^ 
+                           match (decode_cexpr cstr) with
+                               None -> failwith (F.sprintf "Unkown char expression '%s' in literal string" cstr)
+                             | Some c -> (String.make 1 c))
+        | HsStr.Gap g -> decode result
     in decode ""
 }
 
@@ -287,7 +287,7 @@ rule token = parse
   | string    { fix_position lexbuf; P.L_STRING(decode_string lexbuf, loc lexbuf) }
 
   | decimal | ('0' ['o' 'O'] octal) | ('0' ['x' 'X'] hexadecimal)
-	{ P.L_INTEGER(Int64.of_string(LX.lexeme lexbuf), loc lexbuf) }
+        { P.L_INTEGER(Int64.of_string(LX.lexeme lexbuf), loc lexbuf) }
 
   | float      { P.L_FLOAT(float_of_string(LX.lexeme lexbuf), loc lexbuf) }
 
@@ -297,10 +297,10 @@ rule token = parse
 
   let token_info tok =
     match tok with
-	P.SP_LEFT_PAREN(loc) ->  "(", loc
+        P.SP_LEFT_PAREN(loc) ->  "(", loc
       | P.SP_RIGHT_PAREN(loc) -> ")", loc
       | P.SP_COMMA(loc) -> ",", loc
-      | P.SP_SEMI(loc)	-> ";", loc
+      | P.SP_SEMI(loc)  -> ";", loc
       | P.SP_LEFT_BRACKET(loc) -> "[", loc
       | P.SP_RIGHT_BRACKET(loc) -> "]", loc
       | P.SP_B_QUOTE(loc) -> "`", loc
@@ -376,6 +376,6 @@ rule token = parse
   let to_string_with_loc tok =
     let tkinfo = token_info tok in
       Format.sprintf "%s%s"
-	(T.point_to_string (tkinfo_to_loc tkinfo).T.start_p)
-	(tkinfo_to_string tkinfo)
+        (T.point_to_string (tkinfo_to_loc tkinfo).T.start_p)
+        (tkinfo_to_string tkinfo)
 }

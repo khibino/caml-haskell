@@ -85,8 +85,8 @@ module_top:
   K_MODULE modid export_list K_WHERE body { ($2, $3, $5) }
 | K_MODULE modid K_WHERE body         { ($2, [], $4) }
 | body { (I.make_local_id "Main" TK.implicit_loc,
-	  [M.EVar (I.make_local_id "main" TK.implicit_loc)],
-	  $1) }
+          [M.EVar (I.make_local_id "main" TK.implicit_loc)],
+          $1) }
 ;
 
 body:
@@ -110,11 +110,11 @@ le_impdecl_list:
   le_impdecl_list SP_SEMI /* (empty declaration) */  { $1 }
 | impdecl_list SP_SEMI /* (empty declaration) */  { $1 }
 /* | (only one empty declaration)  { [] } */
-; 	/* (n>=1) */
+;       /* (n>=1) */
 
 export_list:
-  SP_LEFT_PAREN export_comma_list may_comma SP_RIGHT_PAREN  { $2 } 	/* (n>0) */
-| SP_LEFT_PAREN may_comma SP_RIGHT_PAREN  { [] } 	/* (n=0) */
+  SP_LEFT_PAREN export_comma_list may_comma SP_RIGHT_PAREN  { $2 }      /* (n>0) */
+| SP_LEFT_PAREN may_comma SP_RIGHT_PAREN  { [] }        /* (n=0) */
 ;
 
 export_comma_list:
@@ -124,10 +124,10 @@ export_comma_list:
 
 export:
   qvar  { M.EVar $1 }
-| qtycon SP_LEFT_PAREN cname_list_or_dots SP_RIGHT_PAREN  { M.ECons ($1, $3) } 	/* (n>0) */
-| qtycon   { M.ECons ($1, M.List []) }	/* (n=0) */
-| qtycls SP_LEFT_PAREN var_list_or_dots SP_RIGHT_PAREN  { M.EClass ($1, $3) } 	/* (n>0) */
-| qtycls   { M.EClass ($1, M.List []) }	/* (n=0) */
+| qtycon SP_LEFT_PAREN cname_list_or_dots SP_RIGHT_PAREN  { M.ECons ($1, $3) }  /* (n>0) */
+| qtycon   { M.ECons ($1, M.List []) }  /* (n=0) */
+| qtycls SP_LEFT_PAREN var_list_or_dots SP_RIGHT_PAREN  { M.EClass ($1, $3) }   /* (n>0) */
+| qtycls   { M.EClass ($1, M.List []) } /* (n=0) */
 | K_MODULE modid  { M.EMod $2 }
 ;
 
@@ -138,7 +138,7 @@ not_empty_impdecl:
 /*
 impdecl:
   K_IMPORT may_qualified modid may_as_modid may_impspec  { M.IDec ($2, $3, $4, $5) }
-|   { M.IEmpty } 		/ * (empty declaration) * /
+|   { M.IEmpty }                / * (empty declaration) * /
 ;
 */
 
@@ -158,10 +158,10 @@ may_impspec:
 ;
 
 impspec:
-  SP_LEFT_PAREN import_comma_list may_comma SP_RIGHT_PAREN  { M.Imp $2 } 	/* (n>0) */
-| SP_LEFT_PAREN may_comma SP_RIGHT_PAREN  { M.Imp [] } 	/* (n=0) */
-| k_hiding SP_LEFT_PAREN import_comma_list may_comma SP_RIGHT_PAREN  { M.Hide $3 } 	/* (n>0) */
-| k_hiding SP_LEFT_PAREN may_comma SP_RIGHT_PAREN  { M.Hide [] } 	/* (n=0) */
+  SP_LEFT_PAREN import_comma_list may_comma SP_RIGHT_PAREN  { M.Imp $2 }        /* (n>0) */
+| SP_LEFT_PAREN may_comma SP_RIGHT_PAREN  { M.Imp [] }  /* (n=0) */
+| k_hiding SP_LEFT_PAREN import_comma_list may_comma SP_RIGHT_PAREN  { M.Hide $3 }      /* (n>0) */
+| k_hiding SP_LEFT_PAREN may_comma SP_RIGHT_PAREN  { M.Hide [] }        /* (n=0) */
 ;
 
 may_comma:
@@ -176,9 +176,9 @@ import_comma_list:
 
 import:
   var  { M.IVar $1 }
-| tycon SP_LEFT_PAREN cname_list_or_dots SP_RIGHT_PAREN  { M.ICons ($1, $3) } 	/* (n>=0) */
+| tycon SP_LEFT_PAREN cname_list_or_dots SP_RIGHT_PAREN  { M.ICons ($1, $3) }   /* (n>=0) */
 | tycon  { M.ICons ($1, M.List []) }
-| tycls SP_LEFT_PAREN var_list_or_dots SP_RIGHT_PAREN  { M.IClass ($1, $3) } 	/* (n>=0) */
+| tycls SP_LEFT_PAREN var_list_or_dots SP_RIGHT_PAREN  { M.IClass ($1, $3) }    /* (n>=0) */
 | tycls  { M.IClass ($1, M.List []) }
 ;
 
@@ -205,8 +205,8 @@ cname:
 ;
 
 topdecl_list:
-  topdecl_semi_list  { $1 } 	/* (n>0) */
-/* |   { [] } 	(n=0) */
+  topdecl_semi_list  { $1 }     /* (n>0) */
+/* |   { [] }   (n=0) */
 ;
 
 topdecl_semi_list:
@@ -224,8 +224,8 @@ topdecl:
 | K_CLASS may_have_scontext tycls tyvar may_have_cdecls  { D.mk_class $2 $3 $4 $5 }
 | K_INSTANCE qtycls inst may_have_idecls  { D.Instance ([], $2, $3, $4) }
 | K_INSTANCE may_have_scontext qtycls inst may_have_idecls  { D.Instance ($2, $3, $4, $5) }
-| K_DEFAULT SP_LEFT_PAREN typ_comma_list SP_RIGHT_PAREN  { D.Default ($3) } 	/* (n>0) */
-| K_DEFAULT SP_LEFT_PAREN SP_RIGHT_PAREN  { D.Default ([]) } 	/* (n=0) */
+| K_DEFAULT SP_LEFT_PAREN typ_comma_list SP_RIGHT_PAREN  { D.Default ($3) }     /* (n>0) */
+| K_DEFAULT SP_LEFT_PAREN SP_RIGHT_PAREN  { D.Default ([]) }    /* (n=0) */
 | decl  { D.Decl $1 }
 ;
 
@@ -258,10 +258,10 @@ typ_comma_list:
   typ SP_COMMA typ_comma_list  { $1 :: $3 }
 | typ  { [$1] }
 ;
-		
+                
 decl_list:
-  SP_LEFT_BRACE semi_decl_list SP_RIGHT_BRACE  { $2 } 	/*(n>0)*/
-| SP_LEFT_BRACE SP_RIGHT_BRACE  { [] } 	/*(n=0)*/
+  SP_LEFT_BRACE semi_decl_list SP_RIGHT_BRACE  { $2 }   /*(n>0)*/
+| SP_LEFT_BRACE SP_RIGHT_BRACE  { [] }  /*(n=0)*/
 ;
 
 semi_decl_list:
@@ -276,8 +276,8 @@ decl:
 ;
 
 cdecl_list:
-  SP_LEFT_BRACE semi_cdecl_list SP_RIGHT_BRACE  { $2 } 	/*(n>0)*/
-| SP_LEFT_BRACE SP_RIGHT_BRACE  { [] } 	/*(n=0)*/
+  SP_LEFT_BRACE semi_cdecl_list SP_RIGHT_BRACE  { $2 }  /*(n>0)*/
+| SP_LEFT_BRACE SP_RIGHT_BRACE  { [] }  /*(n=0)*/
 ;
 
 semi_cdecl_list:
@@ -292,8 +292,8 @@ cdecl:
 ;
 
 idecl_list:
-  SP_LEFT_BRACE semi_idecl_list SP_RIGHT_BRACE  { $2 } 	/*(n>0)*/
-| SP_LEFT_BRACE SP_RIGHT_BRACE  { [] } 	/*(n=0)*/
+  SP_LEFT_BRACE semi_idecl_list SP_RIGHT_BRACE  { $2 }  /*(n>0)*/
+| SP_LEFT_BRACE SP_RIGHT_BRACE  { [] }  /*(n=0)*/
 ;
 
 semi_idecl_list:
@@ -304,25 +304,25 @@ semi_idecl_list:
 idecl:
   funlhs rhs  { D.FunDecI ($1, $2) }
 | var rhs  { D.BindI ($1, $2) }
-|   { D.EmptyI } 		/*(empty)*/
+|   { D.EmptyI }                /*(empty)*/
 ;
 
 gendecl:
-  var_list KS_2_COLON context KS_R_W_ARROW typ  { D.TypeSig ($1, Some $3, $5) } 	/* (type signature) */
-| var_list KS_2_COLON typ  { D.TypeSig ($1, None, $3) } 	/* (type signature) */
-| fixity integer op_list  { D.Fixity (($1, (S.must_be_int $2 "Syntax Bug!")), $3) } 	/* (fixity declaration) */
-| fixity op_list  { D.Fixity (($1, 9), $2) } 	/* (fixity declaration) */
-|   { D.Empty } 		/* (empty declaration) */
+  var_list KS_2_COLON context KS_R_W_ARROW typ  { D.TypeSig ($1, Some $3, $5) }         /* (type signature) */
+| var_list KS_2_COLON typ  { D.TypeSig ($1, None, $3) }         /* (type signature) */
+| fixity integer op_list  { D.Fixity (($1, (S.must_be_int $2 "Syntax Bug!")), $3) }     /* (fixity declaration) */
+| fixity op_list  { D.Fixity (($1, 9), $2) }    /* (fixity declaration) */
+|   { D.Empty }                 /* (empty declaration) */
 ;
 
 op_list:
-  /*op1 , ... , opn 	(n>=1)*/
+  /*op1 , ... , opn     (n>=1)*/
   op SP_COMMA op_list  { $1 :: $3 }
 | op  { [$1] }
 ;
 
 var_list:
-  /*var1 , ..., varn 	(n>=1)*/
+  /*var1 , ..., varn    (n>=1)*/
   var SP_COMMA var_list  { $1 :: $3 }
 | var  { [$1] }
 ;
@@ -335,26 +335,26 @@ fixity:
 
 context:
   clazz  { [$1] }
-| SP_LEFT_PAREN clazz_list SP_RIGHT_PAREN  { $2 } 	/*(n>0)*/
-| SP_LEFT_PAREN SP_RIGHT_PAREN  { [] } 	/*(n=0)*/
+| SP_LEFT_PAREN clazz_list SP_RIGHT_PAREN  { $2 }       /*(n>0)*/
+| SP_LEFT_PAREN SP_RIGHT_PAREN  { [] }  /*(n=0)*/
 ;
 
 typ:
-  btype KS_R_ARROW typ  { TY.FunT ($1, $3) } 	/*(function type)*/
+  btype KS_R_ARROW typ  { TY.FunT ($1, $3) }    /*(function type)*/
 | btype  { TY.TT $1 }
 ;
 
 btype:
-  btype atype  { TY.AppBT ($1, $2) } 	/*(type application)*/
+  btype atype  { TY.AppBT ($1, $2) }    /*(type application)*/
 | atype  { TY.BT $1 }
 ;
 
 atype:
   gtycon  { TY.ConsAT $1 }
 | tyvar  { TY.VarAT $1 }
-| SP_LEFT_PAREN typ_tupple_list SP_RIGHT_PAREN  { TY.TupleAT $2 } 	/*(tuple type, k>=2)*/
-| SP_LEFT_BRACKET typ SP_RIGHT_BRACKET  { TY.ListAT $2 } 	/*(list type)*/
-| SP_LEFT_PAREN typ SP_RIGHT_PAREN  { TY.AT $2 } 	/*(parenthesized constructor)*/
+| SP_LEFT_PAREN typ_tupple_list SP_RIGHT_PAREN  { TY.TupleAT $2 }       /*(tuple type, k>=2)*/
+| SP_LEFT_BRACKET typ SP_RIGHT_BRACKET  { TY.ListAT $2 }        /*(list type)*/
+| SP_LEFT_PAREN typ SP_RIGHT_PAREN  { TY.AT $2 }        /*(parenthesized constructor)*/
 ;
 
 typ_tupple_list:
@@ -364,10 +364,10 @@ typ_tupple_list:
 
 gtycon:
   qtycon  { TY.Qtycon $1 }
-| SP_LEFT_PAREN SP_RIGHT_PAREN  { TY.UnitC } 	/*(unit type)*/
-| SP_LEFT_BRACKET SP_RIGHT_BRACKET  { TY.ListC } 	/*(list constructor)*/
-| SP_LEFT_PAREN KS_R_ARROW SP_RIGHT_PAREN  { TY.FunC } 	/*(function constructor)*/
-| SP_LEFT_PAREN comma_list SP_RIGHT_PAREN  { TY.TupleC $2 } 	/*(tupling constructors)*/
+| SP_LEFT_PAREN SP_RIGHT_PAREN  { TY.UnitC }    /*(unit type)*/
+| SP_LEFT_BRACKET SP_RIGHT_BRACKET  { TY.ListC }        /*(list constructor)*/
+| SP_LEFT_PAREN KS_R_ARROW SP_RIGHT_PAREN  { TY.FunC }  /*(function constructor)*/
+| SP_LEFT_PAREN comma_list SP_RIGHT_PAREN  { TY.TupleC $2 }     /*(tupling constructors)*/
 ;
 
 clazz_list:
@@ -377,7 +377,7 @@ clazz_list:
 
 clazz:
   qtycls tyvar  { CTX.Class ($1, $2) }
-| qtycls SP_LEFT_PAREN tyvar atype_list SP_RIGHT_PAREN  { CTX.ClassApp($1, $3, $4) } 	/*(n>=1)*/
+| qtycls SP_LEFT_PAREN tyvar atype_list SP_RIGHT_PAREN  { CTX.ClassApp($1, $3, $4) }    /*(n>=1)*/
 ;
 
 atype_list:
@@ -387,8 +387,8 @@ atype_list:
 
 scontext:
   simpleclass  { [$1] }
-| SP_LEFT_PAREN simpleclass_list SP_RIGHT_PAREN  { $2 } 	/* (n>0) */
-| SP_LEFT_PAREN SP_RIGHT_PAREN  { [] } 	/* (n=0) */
+| SP_LEFT_PAREN simpleclass_list SP_RIGHT_PAREN  { $2 }         /* (n>0) */
+| SP_LEFT_PAREN SP_RIGHT_PAREN  { [] }  /* (n=0) */
 ;
 
 simpleclass_list:
@@ -401,8 +401,8 @@ simpleclass:
 ;
 
 simpletype:
-  tycon con_tyvar_list  { TY.TT ($2 (TY.simple_btype $1)) } 	/* (k>0) */
-| tycon  { TY.TT (TY.simple_btype $1) }  	/* (k=0) */
+  tycon con_tyvar_list  { TY.TT ($2 (TY.simple_btype $1)) }     /* (k>0) */
+| tycon  { TY.TT (TY.simple_btype $1) }         /* (k=0) */
 ;
 
 con_tyvar_list:
@@ -418,15 +418,15 @@ con_tyvar_list:
 constr_list:
   constr KS_BAR constr_list  { $1 :: $3 }
 | constr  { [$1] }
- 	/* (n>=1) */
+        /* (n>=1) */
 ;
 
 constr:
-  con arity_con_list  { CON.App ($1, $2) } 	/* (arity con = k, k>0) */
-| con   { CON.App ($1, []) } 	/* (arity con = k, k=0) */
-| b_or_strict_a conop b_or_strict_a  { CON.Op2 ($2, $1, $3) } 	/* (infix conop) */
-| con SP_LEFT_BRACE fielddecl_list SP_RIGHT_BRACE  { CON.Label ($1, $3) } 	/* (n>0) */
-| con SP_LEFT_BRACE SP_RIGHT_BRACE  { CON.Label ($1, []) } 	/* (n=0) */
+  con arity_con_list  { CON.App ($1, $2) }      /* (arity con = k, k>0) */
+| con   { CON.App ($1, []) }    /* (arity con = k, k=0) */
+| b_or_strict_a conop b_or_strict_a  { CON.Op2 ($2, $1, $3) }   /* (infix conop) */
+| con SP_LEFT_BRACE fielddecl_list SP_RIGHT_BRACE  { CON.Label ($1, $3) }       /* (n>0) */
+| con SP_LEFT_BRACE SP_RIGHT_BRACE  { CON.Label ($1, []) }      /* (n=0) */
 ;
 
 b_or_strict_a:
@@ -458,8 +458,8 @@ fielddecl:
 
 deriving:
   K_DERIVING dclass  { [$2] }
-| K_DERIVING SP_LEFT_PAREN dclass_list SP_RIGHT_PAREN  { $3 } 	/* (n>0) */
-| K_DERIVING SP_LEFT_PAREN SP_RIGHT_PAREN  { [] } 	/* (n=0) */
+| K_DERIVING SP_LEFT_PAREN dclass_list SP_RIGHT_PAREN  { $3 }   /* (n>0) */
+| K_DERIVING SP_LEFT_PAREN SP_RIGHT_PAREN  { [] }       /* (n=0) */
 ;
 
 dclass_list:
@@ -474,10 +474,10 @@ dclass:
 
 inst:
   gtycon  { INS.Type ($1, []) }
-| SP_LEFT_PAREN gtycon tyvar_list SP_RIGHT_PAREN  { INS.Type ($2, $3) } 	/* (k>=0, tyvars distinct) */
-| SP_LEFT_PAREN tyvar_comma_list SP_RIGHT_PAREN  { INS.Tuple $2 } 	/* (k>=2, tyvars distinct) */
+| SP_LEFT_PAREN gtycon tyvar_list SP_RIGHT_PAREN  { INS.Type ($2, $3) }         /* (k>=0, tyvars distinct) */
+| SP_LEFT_PAREN tyvar_comma_list SP_RIGHT_PAREN  { INS.Tuple $2 }       /* (k>=2, tyvars distinct) */
 | SP_LEFT_BRACKET tyvar SP_RIGHT_BRACKET  { INS.List $2 }
-| SP_LEFT_PAREN tyvar KS_R_ARROW tyvar SP_RIGHT_PAREN  { INS.Fun ($2, $4) } 	/* (tyvar1 and tyvar2 distinct) */
+| SP_LEFT_PAREN tyvar KS_R_ARROW tyvar SP_RIGHT_PAREN  { INS.Fun ($2, $4) }     /* (tyvar1 and tyvar2 distinct) */
 ;
 
 tyvar_list:
@@ -491,11 +491,11 @@ tyvar_comma_list:
 ;
 
 /*
- funlhs  	 ->  	 var apat {apat }
-	| 	pati+1 varop(a,i) pati+1
-	| 	lpati varop(l,i) pati+1
-	| 	pati+1 varop(r,i) rpati
-	| 	( funlhs ) apat {apat }
+ funlhs          ->      var apat {apat }
+        |       pati+1 varop(a,i) pati+1
+        |       lpati varop(l,i) pati+1
+        |       pati+1 varop(r,i) rpati
+        |       ( funlhs ) apat {apat }
 */
 
 funlhs:
@@ -506,13 +506,13 @@ funlhs:
 
 op2_pat_pair:
   pat10 op2_pat_pair_right  { (D.op2lhs_op $2,
-				(P.PatF ($1, D.op2lhs_left $2),
-				 D.op2lhs_right $2)) }
+                                (P.PatF ($1, D.op2lhs_left $2),
+                                 D.op2lhs_right $2)) }
 
 op2_pat_pair_right:
   qconop op2_pat_pair  { (D.op2lhs_op $2,
-			  (P.Op2F ($1, (D.op2lhs_left $2)),
-			   D.op2lhs_right $2))  }
+                          (P.Op2F ($1, (D.op2lhs_left $2)),
+                           D.op2lhs_right $2))  }
 | varop op2_patn_list  { ($1, (P.Op2End, $2)) }
 ;
 
@@ -534,8 +534,8 @@ gd:
 
 exp:
   exp0  { E.Top ($1, None) }
-| exp0 KS_2_COLON context KS_R_W_ARROW typ  { E.Top ($1, Some ($5, Some $3)) } 	/*(expression type signature)*/
-| exp0 KS_2_COLON typ  { E.Top ($1, Some ($3, None)) } 	/*(expression type signature)*/
+| exp0 KS_2_COLON context KS_R_W_ARROW typ  { E.Top ($1, Some ($5, Some $3)) }  /*(expression type signature)*/
+| exp0 KS_2_COLON typ  { E.Top ($1, Some ($3, None)) }  /*(expression type signature)*/
 ;
 
 /*
@@ -545,15 +545,15 @@ lexp6:
 */
 
 /*
-expi 	-> 	expi+1 [qop(n,i) expi+1]
-	| 	lexpi
-	| 	rexpi
-lexpi 	-> 	(lexpi | expi+1) qop(l,i) expi+1
-rexpi 	-> 	expi+1 qop(r,i) (rexpi | expi+1)
+expi    ->      expi+1 [qop(n,i) expi+1]
+        |       lexpi
+        |       rexpi
+lexpi   ->      (lexpi | expi+1) qop(l,i) expi+1
+rexpi   ->      expi+1 qop(r,i) (rexpi | expi+1)
 */
 
 /*
-exp0: 	-> 	[-] exp10 {qop [-] exp10}
+exp0:   ->      [-] exp10 {qop [-] exp10}
 */
 
 exp0:
@@ -579,16 +579,16 @@ op2_left_section:
 ;
 
 exp10:
-  KS_B_SLASH apat_list KS_R_ARROW exp  { E.LambdaE ($2, $4) } 	/*(lambda abstraction, n>=1)*/
-| K_LET decl_list K_IN exp  { E.LetE ($2, $4) } 	/*(let expression)*/
-| K_IF exp K_THEN exp K_ELSE exp  { E.IfE ($2, $4, $6) } 	/*(conditional)*/
-| K_CASE exp K_OF SP_LEFT_BRACE alt_list SP_RIGHT_BRACE  { E.CaseE ($2, $5) } 	/*(case expression)*/
-| K_DO SP_LEFT_BRACE stmt_list_exp SP_RIGHT_BRACE  { E.DoE $3 } 	/*(do expression)*/
+  KS_B_SLASH apat_list KS_R_ARROW exp  { E.LambdaE ($2, $4) }   /*(lambda abstraction, n>=1)*/
+| K_LET decl_list K_IN exp  { E.LetE ($2, $4) }         /*(let expression)*/
+| K_IF exp K_THEN exp K_ELSE exp  { E.IfE ($2, $4, $6) }        /*(conditional)*/
+| K_CASE exp K_OF SP_LEFT_BRACE alt_list SP_RIGHT_BRACE  { E.CaseE ($2, $5) }   /*(case expression)*/
+| K_DO SP_LEFT_BRACE stmt_list_exp SP_RIGHT_BRACE  { E.DoE $3 }         /*(do expression)*/
 | fexp  { E.FexpE $1 }
 ;
 
 /*
- fexp  	 ->  	 [fexp] aexp  	 (function application)
+ fexp    ->      [fexp] aexp     (function application)
 */
 
 fexp:
@@ -611,43 +611,43 @@ aexp_list:
 /* fexp ae1 ae2 -- FappE (FappE (FfunE (fexp), ae1), ae2) */
 
 /*
- aexp  	 ->  	 qvar  	 (variable)
-	| 	gcon 	(general constructor)
-	| 	literal
-	| 	( exp ) 	(parenthesized expression)
-	| 	( exp1 , ... , expk ) 	(tuple, k>=2)
-	| 	[ exp1 , ... , expk ] 	(list, k>=1)
-	| 	[ exp1 [, exp2] .. [exp3] ] 	(arithmetic sequence)
-	| 	[ exp | qual1 , ... , qualn ] 	(list comprehension, n>=1)
-	| 	( expi+1 qop(a,i) ) 	(left section)
-	| 	( lexpi qop(l,i) ) 	(left section)
-	| 	( qop(a,i)<-> expi+1 ) 	(right section)
-	| 	( qop(r,i)<-> rexpi ) 	(right section)
-	| 	qcon { fbind1 , ... , fbindn } 	(labeled construction, n>=0)
-	| 	aexp<qcon> { fbind1 , ... , fbindn } 	(labeled update, n >= 1)
+ aexp    ->      qvar    (variable)
+        |       gcon    (general constructor)
+        |       literal
+        |       ( exp )         (parenthesized expression)
+        |       ( exp1 , ... , expk )   (tuple, k>=2)
+        |       [ exp1 , ... , expk ]   (list, k>=1)
+        |       [ exp1 [, exp2] .. [exp3] ]     (arithmetic sequence)
+        |       [ exp | qual1 , ... , qualn ]   (list comprehension, n>=1)
+        |       ( expi+1 qop(a,i) )     (left section)
+        |       ( lexpi qop(l,i) )      (left section)
+        |       ( qop(a,i)<-> expi+1 )  (right section)
+        |       ( qop(r,i)<-> rexpi )   (right section)
+        |       qcon { fbind1 , ... , fbindn }  (labeled construction, n>=0)
+        |       aexp<qcon> { fbind1 , ... , fbindn }    (labeled update, n >= 1)
 */
 
 
 
 aexp:
-  qvar  { E.VarE $1 } 	/*(variable)*/
-| gcon  { E.ConsE $1 } 	/*(general constructor)*/
+  qvar  { E.VarE $1 }   /*(variable)*/
+| gcon  { E.ConsE $1 }  /*(general constructor)*/
 | literal  { E.LiteralE $1 }
-| SP_LEFT_PAREN exp SP_RIGHT_PAREN  { E.ParenE $2 } 	/*(parenthesized expression)*/
-| SP_LEFT_PAREN exp SP_COMMA exp_list SP_RIGHT_PAREN  { E.TupleE ($2 :: $4) } 	/*(tuple, k>=2)*/
-| SP_LEFT_BRACKET exp_list SP_RIGHT_BRACKET  { E.ListE ($2) } 	/*(list, k>=1)*/
-| SP_LEFT_BRACKET exp KS_DOTDOT SP_RIGHT_BRACKET  { E.ASeqE($2, None, None) } 	/*(arithmetic sequence)*/
-| SP_LEFT_BRACKET exp SP_COMMA exp KS_DOTDOT SP_RIGHT_BRACKET  { E.ASeqE($2, Some $4, None) } 	/*(arithmetic sequence)*/
-| SP_LEFT_BRACKET exp KS_DOTDOT exp SP_RIGHT_BRACKET  { E.ASeqE($2, None, Some $4) } 	/*(arithmetic sequence)*/
-| SP_LEFT_BRACKET exp SP_COMMA exp KS_DOTDOT exp SP_RIGHT_BRACKET  { E.ASeqE($2, Some $4, Some $6) } 	/*(arithmetic sequence)*/
-| SP_LEFT_BRACKET exp KS_BAR qual_list SP_RIGHT_BRACKET  { E.LCompE ($2, $4) } 	/*(list comprehension, n>=1)*/
+| SP_LEFT_PAREN exp SP_RIGHT_PAREN  { E.ParenE $2 }     /*(parenthesized expression)*/
+| SP_LEFT_PAREN exp SP_COMMA exp_list SP_RIGHT_PAREN  { E.TupleE ($2 :: $4) }   /*(tuple, k>=2)*/
+| SP_LEFT_BRACKET exp_list SP_RIGHT_BRACKET  { E.ListE ($2) }   /*(list, k>=1)*/
+| SP_LEFT_BRACKET exp KS_DOTDOT SP_RIGHT_BRACKET  { E.ASeqE($2, None, None) }   /*(arithmetic sequence)*/
+| SP_LEFT_BRACKET exp SP_COMMA exp KS_DOTDOT SP_RIGHT_BRACKET  { E.ASeqE($2, Some $4, None) }   /*(arithmetic sequence)*/
+| SP_LEFT_BRACKET exp KS_DOTDOT exp SP_RIGHT_BRACKET  { E.ASeqE($2, None, Some $4) }    /*(arithmetic sequence)*/
+| SP_LEFT_BRACKET exp SP_COMMA exp KS_DOTDOT exp SP_RIGHT_BRACKET  { E.ASeqE($2, Some $4, Some $6) }    /*(arithmetic sequence)*/
+| SP_LEFT_BRACKET exp KS_BAR qual_list SP_RIGHT_BRACKET  { E.LCompE ($2, $4) }  /*(list comprehension, n>=1)*/
 
-| SP_LEFT_PAREN op2_left_section SP_RIGHT_PAREN  { E.MayLeftSecE ($2) } 	/*(left section)*/
-| SP_LEFT_PAREN op2_right_section SP_RIGHT_PAREN  { E.MayRightSecE ($2) } 	/*(right section)*/
+| SP_LEFT_PAREN op2_left_section SP_RIGHT_PAREN  { E.MayLeftSecE ($2) }         /*(left section)*/
+| SP_LEFT_PAREN op2_right_section SP_RIGHT_PAREN  { E.MayRightSecE ($2) }       /*(right section)*/
 
-| qcon SP_LEFT_BRACE fbind_list SP_RIGHT_BRACE  { E.LabelConsE ($1, OH.of_list $3) } 	/*(labeled construction, n>=1)*/
-| qcon SP_LEFT_BRACE SP_RIGHT_BRACE  { E.LabelConsE ($1, OH.create 0) } 	/*(labeled construction, n=0)*/
-| aexp SP_LEFT_BRACE fbind_list SP_RIGHT_BRACE  { E.LabelUpdE ($1, OH.of_list $3) } 	/*(labeled update, n >= 1)*/
+| qcon SP_LEFT_BRACE fbind_list SP_RIGHT_BRACE  { E.LabelConsE ($1, OH.of_list $3) }    /*(labeled construction, n>=1)*/
+| qcon SP_LEFT_BRACE SP_RIGHT_BRACE  { E.LabelConsE ($1, OH.create 0) }         /*(labeled construction, n=0)*/
+| aexp SP_LEFT_BRACE fbind_list SP_RIGHT_BRACE  { E.LabelUpdE ($1, OH.of_list $3) }     /*(labeled update, n >= 1)*/
 ;
 
 exp_list:
@@ -666,22 +666,22 @@ fbind_list:
 ;
 
 qual:
-  pat KS_L_ARROW exp  { LC.Gen($1, $3) } 	/*(generator)*/
-| K_LET decl_list  { LC.Let $2 } 	/*(local declaration)*/
-| exp  { LC.Guard $1 } 	/*(guard)*/
+  pat KS_L_ARROW exp  { LC.Gen($1, $3) }        /*(generator)*/
+| K_LET decl_list  { LC.Let $2 }        /*(local declaration)*/
+| exp  { LC.Guard $1 }  /*(guard)*/
 ;
 
 alt_list:
   alt SP_SEMI alt_list { $1 :: $3 }
 | alt { [$1] }
-; 	/*(n>=1)*/
+;       /*(n>=1)*/
 
 alt:
   pat KS_R_ARROW exp K_WHERE decl_list  { CA.Simple ($1, $3, $5) }
 | pat KS_R_ARROW exp  { CA.Simple ($1, $3, []) }
 | pat gdpat K_WHERE decl_list  { CA.WithGD ($1, $2, $4) }
 | pat gdpat  { CA.WithGD ($1, $2, []) }
-| { CA.Empty }		/*(empty alternative)*/
+| { CA.Empty }          /*(empty alternative)*/
 ;
 
 gdpat:
@@ -695,7 +695,7 @@ exp_may_be_semi:
 ;
 
 stmt_list_exp: /* stmts */
-  stmt_list exp_may_be_semi  { (List.rev($1), $2) }	/*(n>=0)*/
+  stmt_list exp_may_be_semi  { (List.rev($1), $2) }     /*(n>=0)*/
 ;
 
 stmt_list:
@@ -707,7 +707,7 @@ stmt:
   exp SP_SEMI  { DS.Exp $1 }
 | pat KS_L_ARROW exp SP_SEMI  { DS.Cons($1, $3) }
 | K_LET decl_list SP_SEMI  { DS.Let $2 }
-| SP_SEMI  { DS.Empty }	/*(empty statement)*/
+| SP_SEMI  { DS.Empty } /*(empty statement)*/
 ;
 
 fbind:
@@ -715,32 +715,32 @@ fbind:
 ;
 
 pat:
-  var ks_plus integer 	/*(successor pattern)*/
+  var ks_plus integer   /*(successor pattern)*/
       { match $3 with (S.Int (i, l)) -> P.PlusP($1, i, l) | _ -> failwith "plus integer pattern syntax error." }
 | pat0  { $1 }
 ;
 
 /*
-pati  	 ->  	 pati+1 [qconop(n,i) pati+1]
-	| 	lpati
-	| 	rpati
+pati     ->      pati+1 [qconop(n,i) pati+1]
+        |       lpati
+        |       rpati
 */
 
 /*
-lpati 	-> 	(lpati | pati+1) qconop(l,i) pati+1
+lpati   ->      (lpati | pati+1) qconop(l,i) pati+1
 */
 
 /*
 lpat6:
-  ks_minus integer 	(negative literal)
+  ks_minus integer      (negative literal)
       { match $2 with (S.Int (v, l)) -> S.P.MIntP (v, l) | _ -> failwith "negative integer literal pattern syntax error." }
-| ks_minus float 	(negative literal)
+| ks_minus float        (negative literal)
       { match $2 with (S.Float (v, l)) -> S.P.MFloatP (v, l) | _ -> failwith "negative integer literal pattern syntax error." }
 ;
 */
 
 /*
-rpati 	-> 	pati+1 qconop(r,i) (rpati | pati+1)
+rpati   ->      pati+1 qconop(r,i) (rpati | pati+1)
 */
 
 pat0:
@@ -766,7 +766,7 @@ op2_patn_right:
 
 pat10:
   apat  { $1 }
-| gcon apat_list 	/*(arity gcon = k, k>=1)*/
+| gcon apat_list        /*(arity gcon = k, k>=1)*/
       { P.ConP($1, $2) }
 ;
 
@@ -778,23 +778,23 @@ apat_list:
 apat:
   var
       { P.VarP $1 }
-| var KS_AT apat 	/*(as pattern)*/
+| var KS_AT apat        /*(as pattern)*/
       { P.AsP($1, $3) }
-| gcon 	/*(arity gcon = 0)*/
+| gcon  /*(arity gcon = 0)*/
       { P.ConP($1, []) }
-| qcon SP_LEFT_BRACE fpat_list SP_RIGHT_BRACE 	/*(labeled pattern, k>=0)*/ /* may be error pattern */
+| qcon SP_LEFT_BRACE fpat_list SP_RIGHT_BRACE   /*(labeled pattern, k>=0)*/ /* may be error pattern */
       { P.LabelP($1, $3) }
 | literal
       { P.LiteralP($1) }
-| K_WILDCARD 	/*(wildcard)*/
+| K_WILDCARD    /*(wildcard)*/
       { P.WCardP }
-| SP_LEFT_PAREN pat SP_RIGHT_PAREN 	/*(parenthesized pattern)*/
+| SP_LEFT_PAREN pat SP_RIGHT_PAREN      /*(parenthesized pattern)*/
       { $2 }
-| SP_LEFT_PAREN tuple_pat SP_RIGHT_PAREN	/*(tuple pattern, k>=2)*/
+| SP_LEFT_PAREN tuple_pat SP_RIGHT_PAREN        /*(tuple pattern, k>=2)*/
       { P.TupleP $2 }
-| SP_LEFT_BRACKET list_pat SP_RIGHT_BRACKET 	/*(list pattern, k>=1)*/
+| SP_LEFT_BRACKET list_pat SP_RIGHT_BRACKET     /*(list pattern, k>=1)*/
       { P.ListP $2 }
-| KS_TILDE apat 	/*(irrefutable pattern)*/
+| KS_TILDE apat         /*(irrefutable pattern)*/
       { P.Irref $2 }
 ;
 
@@ -831,74 +831,74 @@ comma_list:
 ;
 
 qtyvar:
-  qvarid  { $1 }  	 /*(qualified type variables)*/
+  qvarid  { $1 }         /*(qualified type variables)*/
 ;
 
 qtycon:
-  qconid  { $1 } 	/*(qualified type constructors)*/
+  qconid  { $1 }        /*(qualified type constructors)*/
 ;
 
 tyvar:
-  varid  { $1 }  	 /*(type variables)*/
+  varid  { $1 }          /*(type variables)*/
 ;
 
 tycon:
-  conid  { $1 } 	/*(type constructors)*/
+  conid  { $1 }         /*(type constructors)*/
 ;
 
 modid:
-  conid  { $1 } 	 /*(modules)*/
+  conid  { $1 }          /*(modules)*/
 ;
 
 var:
   varid  { $1 }
 | SP_LEFT_PAREN varsym SP_RIGHT_PAREN  { $2 }
-; 	/*(variable)*/
+;       /*(variable)*/
 
 qvar:
   qvarid  { $1 }
 | SP_LEFT_PAREN qvarsym SP_RIGHT_PAREN  { $2 }
-; 	/*(qualified variable)*/
+;       /*(qualified variable)*/
 
 con:
   conid  { $1 }
 | SP_LEFT_PAREN consym SP_RIGHT_PAREN  { $2 }
-; 	/*(constructor)*/
+;       /*(constructor)*/
 
 qcon:
   qconid  { $1 }
 | SP_LEFT_PAREN gconsym SP_RIGHT_PAREN  { $2 }
-; 	/*(qualified constructor)*/
+;       /*(qualified constructor)*/
 
 varop:
   varsym  { $1 }
 | SP_B_QUOTE varid SP_B_QUOTE  { $2 }
-; 	/*(variable operator)*/
+;       /*(variable operator)*/
 
 qvarop:
   qvarsym  { $1 }
 | SP_B_QUOTE qvarid SP_B_QUOTE  { $2 }
-; 	/*(qualified variable operator)*/
+;       /*(qualified variable operator)*/
 
 conop:
   consym  { $1 }
 | SP_B_QUOTE conid SP_B_QUOTE  { $2 }
-; 	/*(constructor operator)*/
+;       /*(constructor operator)*/
 
 qconop:
   gconsym  { $1 }
 | SP_B_QUOTE qconid SP_B_QUOTE  { $2 }
-; 	/*(qualified constructor operator)*/
+;       /*(qualified constructor operator)*/
 
 op:
   varop  { $1 }
 | conop  { $1 }
-; 	/*(operator)*/
+;       /*(operator)*/
 
 qop:
   qvarop  { $1 }
 | qconop  { $1 }
-; 	/*(qualified operator)*/
+;       /*(qualified operator)*/
 
 
 gconsym:
@@ -946,13 +946,13 @@ k_hiding:
 ;
 
 qtycls:
-  /* qconid  { $1 } */ 	/*(qualified type classes)*/
+  /* qconid  { $1 } */  /*(qualified type classes)*/
   T_MOD_CLSID   { I.make_id_with_mod $1 }
 | tycls         { $1 }
 ;
 
 tycls:
-  conid  { $1 } 	/*(type classes)*/
+  conid  { $1 }         /*(type classes)*/
 | T_CLSID  { I.make_local_id (fst $1) (snd $1) }
 ;
 

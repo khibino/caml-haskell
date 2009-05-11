@@ -32,34 +32,34 @@ let all_token_rev_list lexbuf =
 
   let rec scan_start () =
     match get_token () with
-	(P.SP_LEFT_BRACE _ | P.K_MODULE _) as start -> start
+        (P.SP_LEFT_BRACE _ | P.K_MODULE _) as start -> start
 (*       | P.WS_NEWLINE _ -> scan_start () *)
       | P.WS_WHITE _ -> scan_start ()
       | other ->
-	  let _ = Stack.push other unget_s in
-	    P.BLK_OPEN (blk_level_pair other)
+          let _ = Stack.push other unget_s in
+            P.BLK_OPEN (blk_level_pair other)
   in
 
   let scan_next prev = 
     let rec scan_next_rec () =
       let cur =
-	if (Stack.is_empty unget_s) then (get_token ())
-	else (Stack.pop unget_s) in
+        if (Stack.is_empty unget_s) then (get_token ())
+        else (Stack.pop unget_s) in
 
-	match (prev, cur) with
-	    (_, (P.EOF(_) as eoft)) -> eoft
-	  | (_, P.WS_WHITE(_)) -> (scan_next_rec ())
-(* 	  | (_, P.WS_NEWLINE(_)) -> (scan_next_rec ()) *)
-	  | ((P.K_LET(_) | P.K_WHERE(_) | P.K_DO(_) | P.K_OF(_)), (P.SP_LEFT_BRACE(_) as lbr)) -> lbr
-	  | ((P.K_LET(_) | P.K_WHERE(_) | P.K_DO(_) | P.K_OF(_)), tk) ->
-	      let (_, (level, loc)) = (Stack.push tk unget_s, blk_level_pair tk) in
-		P.BLK_OPEN((if (eof_token_p tk) then 0 else level), loc)
-	  | (_, tk) ->
-	      let (_, loc) as p = blk_level_pair tk in
-		if (loc.T.start_p.T.line
-		    - (L0.get_location prev).T.end_p.T.line) > 0 then
-		  let _ = Stack.push tk unget_s in P.BLK_LEVEL p
-		else tk
+        match (prev, cur) with
+            (_, (P.EOF(_) as eoft)) -> eoft
+          | (_, P.WS_WHITE(_)) -> (scan_next_rec ())
+(*        | (_, P.WS_NEWLINE(_)) -> (scan_next_rec ()) *)
+          | ((P.K_LET(_) | P.K_WHERE(_) | P.K_DO(_) | P.K_OF(_)), (P.SP_LEFT_BRACE(_) as lbr)) -> lbr
+          | ((P.K_LET(_) | P.K_WHERE(_) | P.K_DO(_) | P.K_OF(_)), tk) ->
+              let (_, (level, loc)) = (Stack.push tk unget_s, blk_level_pair tk) in
+                P.BLK_OPEN((if (eof_token_p tk) then 0 else level), loc)
+          | (_, tk) ->
+              let (_, loc) as p = blk_level_pair tk in
+                if (loc.T.start_p.T.line
+                    - (L0.get_location prev).T.end_p.T.line) > 0 then
+                  let _ = Stack.push tk unget_s in P.BLK_LEVEL p
+                else tk
     in (scan_next_rec ())
   in
     (* ST.create_stream (scan_start ()) scan_next eof_token_p *)
@@ -75,7 +75,7 @@ module SWL =
 struct
   let get upper_levels =
     match upper_levels with
-	[] -> ref []
+        [] -> ref []
       | (_, prev_stk) :: _ -> prev_stk
 
   let push tok stk =
@@ -88,30 +88,30 @@ let push_new_token tok lform =
 let rec layout istream levels =
   let (tok, err) =
     match ST.peek istream with
-	None -> raise Parsing.Parse_error
+        None -> raise Parsing.Parse_error
       | Some x -> x
   in
     match (tok, levels) with
-	((P.BLK_LEVEL (n, loc)), (m :: mstl as ms)) when m = n ->
-	  let addtk = P.SP_SEMI(loc) in
-	    push_new_token addtk (lazy (layout (ST.tl istream) ms))
+        ((P.BLK_LEVEL (n, loc)), (m :: mstl as ms)) when m = n ->
+          let addtk = P.SP_SEMI(loc) in
+            push_new_token addtk (lazy (layout (ST.tl istream) ms))
       | ((P.BLK_LEVEL (n, loc)), m :: ms) when n < m  ->
-	  push_new_token (P.SP_RIGHT_BRACE(loc)) (lazy (layout istream ms))
+          push_new_token (P.SP_RIGHT_BRACE(loc)) (lazy (layout istream ms))
       | ((P.BLK_LEVEL (n, _)), ms)                         -> layout (ST.tl istream) ms
       | ((P.BLK_OPEN (n, loc)), (m :: ms as levels)) when n > m  ->
-	  push_new_token (P.SP_LEFT_BRACE(loc)) (lazy (layout (ST.tl istream) (n :: levels))) (* Note 1 *)
+          push_new_token (P.SP_LEFT_BRACE(loc)) (lazy (layout (ST.tl istream) (n :: levels))) (* Note 1 *)
       | ((P.BLK_OPEN (n, loc)), []) when n > 0             ->
-	  push_new_token (P.SP_LEFT_BRACE(loc)) (lazy (layout (ST.tl istream) [n])) (* Note 1 *)
+          push_new_token (P.SP_LEFT_BRACE(loc)) (lazy (layout (ST.tl istream) [n])) (* Note 1 *)
       | ((P.BLK_OPEN (n, loc)), ms)                        ->
-	  push_new_token
-	    (P.SP_LEFT_BRACE(loc))
-	    (lazy (push_new_token
-		     (P.SP_RIGHT_BRACE(loc))
-		     (lazy (layout (push_new_token
-				      (P.BLK_LEVEL(n, loc))
-				      (lazy (ST.tl istream))) ms)))) (* Note 2 *)
+          push_new_token
+            (P.SP_LEFT_BRACE(loc))
+            (lazy (push_new_token
+                     (P.SP_RIGHT_BRACE(loc))
+                     (lazy (layout (push_new_token
+                                      (P.BLK_LEVEL(n, loc))
+                                      (lazy (ST.tl istream))) ms)))) (* Note 2 *)
       | ((P.SP_RIGHT_BRACE _ as rbr), 0 :: ms)        ->
-	  ST.Cons ((rbr, err), lazy (layout (ST.tl istream) ms)) (* Note 3 *)
+          ST.Cons ((rbr, err), lazy (layout (ST.tl istream) ms)) (* Note 3 *)
       | ((P.SP_RIGHT_BRACE _), ms)                   -> raise Parsing.Parse_error (* Note 3 *)
       | ((P.SP_LEFT_BRACE _ as lbr), ms)             -> ST.Cons ((lbr, err), lazy (layout (ST.tl istream) (0 :: ms))) (* Note 4 *)
 
@@ -119,14 +119,14 @@ let rec layout istream levels =
       | ((P.EOF loc), m :: ms) when m <> 0       -> push_new_token (P.SP_RIGHT_BRACE(loc)) (lazy (layout istream ms)) (* Note 6 *)
 
       | (t, (m :: mstl)) when m <> 0 && (!err)       ->
-  	  err := false;
-	  push_new_token (P.SP_RIGHT_BRACE(L0.get_location t)) (lazy (layout istream mstl))  (* parse-error(t) Note 5 case *)
+          err := false;
+          push_new_token (P.SP_RIGHT_BRACE(L0.get_location t)) (lazy (layout istream mstl))  (* parse-error(t) Note 5 case *)
       | (t, ((m :: mstl) as ms))                   ->
-	  ST.Cons ((t, err),
-		   lazy (layout (ST.tl istream) ms))
+          ST.Cons ((t, err),
+                   lazy (layout (ST.tl istream) ms))
       | (t, ms)                                    ->
-	  ST.Cons ((t, err),
-		   lazy (layout (ST.tl istream) ms))
+          ST.Cons ((t, err),
+                   lazy (layout (ST.tl istream) ms))
 
 type ('ret, 'tok) parse_result =
     Ret of 'ret | Err of 'tok
@@ -137,7 +137,7 @@ let try_parse token_data lexbuf =
 
   let lstream_next () =
     (match (ST.peek !lstream_ref) with
-	 None -> raise (Error "BUG! EOF handle")
+         None -> raise (Error "BUG! EOF handle")
        | Some x -> let _ = (lstream_ref := ST.tl !lstream_ref) in x) in
 
   let token_stack = Stack.create () in
@@ -145,33 +145,33 @@ let try_parse token_data lexbuf =
   let rec proceed () =
     let (tok, _) as pair = lstream_next () in
     let _ = (Stack.push pair token_stack,
-	     debug_out (Printf.sprintf "token:%s" (L0.to_string_with_loc tok))) in
+             debug_out (Printf.sprintf "token:%s" (L0.to_string_with_loc tok))) in
       match tok with
-	  P.T_CONID (n, loc) when ID.class_p (ID.make_local_id n loc)  -> P.T_CLSID (n, loc)
-	| P.T_MOD_CONID (iwm, loc) when ID.class_p (ID.make_id iwm.T.modid iwm.T.id loc) -> P.T_MOD_CLSID (iwm, loc)
-	| _ -> tok
+          P.T_CONID (n, loc) when ID.class_p (ID.make_local_id n loc)  -> P.T_CLSID (n, loc)
+        | P.T_MOD_CONID (iwm, loc) when ID.class_p (ID.make_id iwm.T.modid iwm.T.id loc) -> P.T_MOD_CLSID (iwm, loc)
+        | _ -> tok
   in
 
     try
       Ret (Parser.e_module
-	     (fun _ -> proceed ())
-	     lexbuf)
+             (fun _ -> proceed ())
+             lexbuf)
     with
-	Parsing.Parse_error ->
-	  let (cur_t, err) as et_pair = Stack.pop token_stack in
-	  let _ = debug_out (Printf.sprintf "Error token:%s" (L0.to_string_with_loc cur_t)) in
-	    Err et_pair
+        Parsing.Parse_error ->
+          let (cur_t, err) as et_pair = Stack.pop token_stack in
+          let _ = debug_out (Printf.sprintf "Error token:%s" (L0.to_string_with_loc cur_t)) in
+            Err et_pair
 
 let rec parse0 token_data lexbuf tryc et_list err_list =
   let _ = List.map (fun e -> (e := true)) err_list in (* Set all errored token flags *)
     match (try_parse token_data lexbuf) with
       | Err (et, err) ->
-	  (if List.mem et et_list then
-	     let _ = debug_out (Printf.sprintf "Layout retrying %d failed." tryc) in
-	       raise (Error (Printf.sprintf "Layout retrying %d failed. Error token:%s" tryc (L0.to_string_with_loc et)))
-	   else
-	     let _ = debug_out (Printf.sprintf "Layout retrying %d." (tryc + 1)) in
-	       parse0 token_data lexbuf (tryc + 1) (et :: et_list) (err :: err_list))
+          (if List.mem et et_list then
+             let _ = debug_out (Printf.sprintf "Layout retrying %d failed." tryc) in
+               raise (Error (Printf.sprintf "Layout retrying %d failed. Error token:%s" tryc (L0.to_string_with_loc et)))
+           else
+             let _ = debug_out (Printf.sprintf "Layout retrying %d." (tryc + 1)) in
+               parse0 token_data lexbuf (tryc + 1) (et :: et_list) (err :: err_list))
       | Ret x -> x
 
 let parse0_str str =
@@ -210,11 +210,11 @@ let parse_channel loaded_modules input_chan =
   let pd0 = PD.create_parsed_data parse_buffer syntax in
 
   let pd1 = { pd0 with
-		PD.syntax
-		= (SS.op2_scan_module
-		     (pd0, (if prelude_mode then pd0 else Q.peek loaded_modules))
-		     syntax)
-	    } in
+                PD.syntax
+                = (SS.op2_scan_module
+                     (pd0, (if prelude_mode then pd0 else Q.peek loaded_modules))
+                     syntax)
+            } in
   let _ = Q.add pd1 loaded_modules in
     pd1
 
@@ -222,8 +222,8 @@ let rec parse_files loaded =
   function
       [] -> loaded
     | f :: rest ->
-	let _ = parse_channel loaded (open_in_bin f) in
-	  parse_files loaded rest
+        let _ = parse_channel loaded (open_in_bin f) in
+          parse_files loaded rest
 
 let prelude_path = "./Prelude.hs"
 

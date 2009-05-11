@@ -72,7 +72,7 @@ struct
 
   let str n =
     match !n with
-	Some n -> n
+        Some n -> n
       | None -> failwith "ModuleNamespace.str called with not named local module!"  (* "<local>" *)
 
 end
@@ -99,27 +99,27 @@ struct
   let create_module mn = 
     let (fixity_a, typesig_a, fun_a, tclass_a) =
       (OA.create
-	 ((^) "Multiple fixity declarations for ") 
-	 (fun n (fix, tcls) -> n ^ (fixity_str fix)),
+         ((^) "Multiple fixity declarations for ") 
+         (fun n (fix, tcls) -> n ^ (fixity_str fix)),
        OA.create
-	 ((^) "Multiple declarations of ") 
-	 (fun n tcls -> ((tclass_str tcls) ^ n)),
+         ((^) "Multiple declarations of ") 
+         (fun n tcls -> ((tclass_str tcls) ^ n)),
        OA.create
-	 ((^) "Multiple declarations of ") 
-	 (fun n _ -> "func(" ^ n ^ ")"),
+         ((^) "Multiple declarations of ") 
+         (fun n _ -> "func(" ^ n ^ ")"),
        OA.create
-	 ((^) "Multiple declarations of")
-	 (fun n tcls -> ((tclass_str tcls) ^ n)))
+         ((^) "Multiple declarations of")
+         (fun n tcls -> ((tclass_str tcls) ^ n)))
     in {
-	mns = mn;
-	
-	op_fixity_assoc = fixity_a;
-	op_typesig_assoc = typesig_a;
-	op_fun_assoc = fun_a;
-	tclass_assoc = tclass_a;
+        mns = mn;
+        
+        op_fixity_assoc = fixity_a;
+        op_typesig_assoc = typesig_a;
+        op_fun_assoc = fun_a;
+        tclass_assoc = tclass_a;
 
-	dump_buf = (fun () ->
-		      (fixity_a.OA.to_string ()) ^ "\n" ^ (typesig_a.OA.to_string ()) ^ "\n" ^ (tclass_a.OA.to_string ()) ^ "\n")
+        dump_buf = (fun () ->
+                      (fixity_a.OA.to_string ()) ^ "\n" ^ (typesig_a.OA.to_string ()) ^ "\n" ^ (tclass_a.OA.to_string ()) ^ "\n")
       }
 
 
@@ -135,17 +135,17 @@ struct
 
   let create () = 
     let (massoc, lm) = (OA.create
-			  (fun x -> "ParseBuffer BUG!: same name module added: " ^ x)
-			  (fun k m -> m.dump_buf ()),
-			create_module (MN.add_local ())) in
+                          (fun x -> "ParseBuffer BUG!: same name module added: " ^ x)
+                          (fun k m -> m.dump_buf ()),
+                        create_module (MN.add_local ())) in
     let newb = {
       module_assoc  = massoc;
 
       get_module = (fun modid ->
-		      if massoc.OA.mem modid then massoc.OA.find modid
-		      else
-			let m = create_module (MN.add modid) in
-			let _ = massoc.OA.add modid m in m);
+                      if massoc.OA.mem modid then massoc.OA.find modid
+                      else
+                        let m = create_module (MN.add modid) in
+                        let _ = massoc.OA.add modid m in m);
       get_local_module = (fun () -> lm);
     } in
       Stack.push newb theBufferStack;
@@ -218,11 +218,11 @@ struct
 
   let get_module_buffer id =
     match id.qual with
-	Sp (_) -> PBuf.find_module (prelude_name ())
+        Sp (_) -> PBuf.find_module (prelude_name ())
       | Qual nr ->
-	  let lm = PBuf.find_local_module () in
-	    if nr == lm.PBuf.mns then lm
-	    else PBuf.find_module (MN.str nr)
+          let lm = PBuf.find_local_module () in
+            if nr == lm.PBuf.mns then lm
+            else PBuf.find_module (MN.str nr)
 
 
   let as_op_set_fixity id fixity =
@@ -251,6 +251,7 @@ struct
 
 end
 
+(* ParseBuffer.module_buffer --> ParsedData.module_data *)
 module ParsedData =
 struct
   module H = Hashtbl
@@ -263,7 +264,7 @@ struct
   let debug_out s =
     if !debugFlag then
       let _ = output_string stderr ("DEBUG: " ^ s ^ "\n") in
-	flush stderr
+        flush stderr
 
 
   type op_def = {
@@ -279,25 +280,25 @@ struct
   let make_op_def pb_mod opn =
     let (fixity, fix_tclass) = 
       if pb_mod.PBuf.op_fixity_assoc.OA.mem opn then
-	pb_mod.PBuf.op_fixity_assoc.OA.find opn
+        pb_mod.PBuf.op_fixity_assoc.OA.find opn
       else (default_op_fixity, None)
     in
 
     let sig_tclass = 
       if pb_mod.PBuf.op_typesig_assoc.OA.mem opn then
-	Some (pb_mod.PBuf.op_typesig_assoc.OA.find opn)
+        Some (pb_mod.PBuf.op_typesig_assoc.OA.find opn)
       else None
     in
 
     let tclass =
       match (fix_tclass, sig_tclass) with
-	  (None, None) -> None
-	| (Some _, Some _) -> failwith ("Multiple declarations for " ^ (PBuf.mnstr pb_mod) ^ "." ^ opn)
-	| (x, None) | (None, x) -> x
+          (None, None) -> None
+        | (Some _, Some _) -> failwith ("Multiple declarations for " ^ (PBuf.mnstr pb_mod) ^ "." ^ opn)
+        | (x, None) | (None, x) -> x
     in
     let v = { fname = opn;
-	      fixity = fixity;
-	      tclass = tclass; } in
+              fixity = fixity;
+              tclass = tclass; } in
       debug_out (Printf.sprintf "op '%s' defined." (op_def_string v));
       v
 
@@ -327,54 +328,54 @@ struct
 
     let conv_op a_pb =
       let conv_op_assoc assoc =
-	assoc.OA.iter
-	  (fun op _ ->
-	     new_op_assoc.OA.replace
-	       op
-	       (make_op_def pb_mod_local op))
+        assoc.OA.iter
+          (fun op _ ->
+             new_op_assoc.OA.replace
+               op
+               (make_op_def pb_mod_local op))
       in
-	(conv_op_assoc a_pb.PBuf.op_fixity_assoc,
-	 conv_op_assoc a_pb.PBuf.op_typesig_assoc,
-	 conv_op_assoc a_pb.PBuf.op_fun_assoc)
+        (conv_op_assoc a_pb.PBuf.op_fixity_assoc,
+         conv_op_assoc a_pb.PBuf.op_typesig_assoc,
+         conv_op_assoc a_pb.PBuf.op_fun_assoc)
     in
     
     let _ = (conv_op pb_mod_local, conv_op pb_mod) in
       (* only local module convert operator definition *)
 
       { mname = local_module_name;
-	mn_ref = pb_mod_local.PBuf.mns;
-	op_assoc = new_op_assoc;
-	tclass_assoc = pb_mod.PBuf.tclass_assoc;
+        mn_ref = pb_mod_local.PBuf.mns;
+        op_assoc = new_op_assoc;
+        tclass_assoc = pb_mod.PBuf.tclass_assoc;
       }
 
   let convert_module pb_mod =
     { mname = PBuf.mnstr pb_mod;
       mn_ref = pb_mod.PBuf.mns;
       op_assoc = OA.create
-	(fun _ -> "BUG: convert_module")
-	(fun k v -> k ^ " => " ^ (op_def_string v));
+        (fun _ -> "BUG: convert_module")
+        (fun k v -> k ^ " => " ^ (op_def_string v));
       tclass_assoc = pb_mod.PBuf.tclass_assoc;
     }
 
   let get_module_data pd id =
     match id.ID.qual with
-	ID.Sp (_) -> pd.module_assoc.OA.find (prelude_name ())
+        ID.Sp (_) -> pd.module_assoc.OA.find (prelude_name ())
       | ID.Qual nr ->
-	  let (mns, lm) = ((MN.str nr), pd.local_module) in
-	    if mns = lm.mname then lm
-	    else pd.module_assoc.OA.find mns
+          let (mns, lm) = ((MN.str nr), pd.local_module) in
+            if mns = lm.mname then lm
+            else pd.module_assoc.OA.find mns
 (*       failwith ("module " ^ modid ^" not found.") *)
 
   let id_op_def (pd, pre_pd) id =
     let (m, op) = (get_module_data pd id, id.ID.name) in
       if m.op_assoc.OA.mem op then
-	m.op_assoc.OA.find op
+        m.op_assoc.OA.find op
       else
-	let pm = pre_pd.module_assoc.OA.find (prelude_name ()) in
-	  if pm.op_assoc.OA.mem op then
-	    pm.op_assoc.OA.find op
-	  else
-	    failwith ("operator " ^ op ^" not found in module " ^ m.mname)
+        let pm = pre_pd.module_assoc.OA.find (prelude_name ()) in
+          if pm.op_assoc.OA.mem op then
+            pm.op_assoc.OA.find op
+          else
+            failwith ("operator " ^ op ^" not found in module " ^ m.mname)
 
   let create_parsed_data pbuf ((local_module_id, _, _) as syntax_t) =
     let new_mod_assoc = OA.create
@@ -384,14 +385,14 @@ struct
     let local_module_name = local_module_id.ID.name in
     let _ = pbuf.PBuf.module_assoc.OA.iter
       (fun modid pb_mod ->
-	 if ((PBuf.mnstr pb_mod) <> local_module_name) then
-	   let _ = debug_out ("Converting module '" ^ modid ^ "' ...") in
-	   let mod_data = convert_module pb_mod in
-	   let _ = debug_out ("Convert module done.") in
-	     new_mod_assoc.OA.add mod_data.mname mod_data
-	 else
-	   debug_out ("Skipping module '" ^ modid ^ "' which is local")
-(* 	   else convert_local_module (pbuf.PBuf.get_local_module ()) pb_mod local_module_name *)
+         if ((PBuf.mnstr pb_mod) <> local_module_name) then
+           let _ = debug_out ("Converting module '" ^ modid ^ "' ...") in
+           let mod_data = convert_module pb_mod in
+           let _ = debug_out ("Convert module done.") in
+             new_mod_assoc.OA.add mod_data.mname mod_data
+         else
+           debug_out ("Skipping module '" ^ modid ^ "' which is local")
+(*         else convert_local_module (pbuf.PBuf.get_local_module ()) pb_mod local_module_name *)
       )
     in
 
@@ -407,9 +408,9 @@ struct
     let _ = (pbuf.PBuf.get_local_module ()).PBuf.mns := Some local_module_name in
       { module_assoc = new_mod_assoc;
 
-	local_module = lm;
+        local_module = lm;
 
-	syntax = syntax_t
+        syntax = syntax_t
       }
 
 end
@@ -485,38 +486,38 @@ struct
     | ConOp2P of (ID.idwl * pat * pat)
 
 (*
-pati  	 ->  	 pati+1 [qconop(n,i) pati+1]
-	| 	lpati
-	| 	rpati
-lpati 	-> 	(lpati | pati+1) qconop(l,i) pati+1
-rpati 	-> 	pati+1 qconop(r,i) (rpati | pati+1)
+pati     ->      pati+1 [qconop(n,i) pati+1]
+        |       lpati
+        |       rpati
+lpati   ->      (lpati | pati+1) qconop(l,i) pati+1
+rpati   ->      pati+1 qconop(r,i) (rpati | pati+1)
 *)
 
   let rec scan_op2pat min_i pdata pat_fun list =
     match list with
-	PatF (pat, Op2End) -> pat_fun pat
+        PatF (pat, Op2End) -> pat_fun pat
       | PatF (patAA, Op2F (op_aa, (PatF (patBB, Op2End)))) ->
-	  ConOp2P (op_aa, pat_fun patAA, pat_fun patBB)
+          ConOp2P (op_aa, pat_fun patAA, pat_fun patBB)
       | PatF (patAA, Op2F (op_aa, ((PatF (patBB, Op2F (op_bb, rest))) as cdr))) ->
-	  (let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
-	   let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
-	     match (aa_fixity, bb_fixity) with
-		 ((_, aa_i), _) when aa_i < min_i ->
-		   failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str aa_fixity))
-	       | (_, (_, bb_i)) when bb_i < min_i ->
-		   failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str bb_fixity))
-	       | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-		   scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa, pat_fun patAA, pat_fun patBB), Op2F (op_bb, rest)))
-	       | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
-		   scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa, pat_fun patAA, pat_fun patBB), Op2F (op_bb, rest)))
-	       | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-		   ConOp2P (op_aa, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
-	       | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
-		   ConOp2P (op_aa, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
-	       | _ ->
-		   failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
-			       (fixity_str aa_fixity)
-			       (fixity_str bb_fixity)))
+          (let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
+           let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
+             match (aa_fixity, bb_fixity) with
+                 ((_, aa_i), _) when aa_i < min_i ->
+                   failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str aa_fixity))
+               | (_, (_, bb_i)) when bb_i < min_i ->
+                   failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str bb_fixity))
+               | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
+                   scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa, pat_fun patAA, pat_fun patBB), Op2F (op_bb, rest)))
+               | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
+                   scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa, pat_fun patAA, pat_fun patBB), Op2F (op_bb, rest)))
+               | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
+                   ConOp2P (op_aa, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
+               | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
+                   ConOp2P (op_aa, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
+               | _ ->
+                   failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
+                               (fixity_str aa_fixity)
+                               (fixity_str bb_fixity)))
       | _ -> failwith "Arity 2 operator pattern syntax error."
 
 end
@@ -761,11 +762,11 @@ struct
   let make_fexp aexpl_lambda =
     let rec simplify =
       function
-	  FappE (FappEID, x) -> FfunE x
-	| FappE (fexp, aexp) -> FappE ((simplify fexp), aexp)
-	| FfunE _ -> failwith "Already converted fexp(FfunE) found. parser BUG!!"
+          FappE (FappEID, x) -> FfunE x
+        | FappE (fexp, aexp) -> FappE ((simplify fexp), aexp)
+        | FfunE _ -> failwith "Already converted fexp(FfunE) found. parser BUG!!"
 
-	| FappEID -> failwith "Already converted fexp(FappEID) found. parser BUG!!"
+        | FappEID -> failwith "Already converted fexp(FappEID) found. parser BUG!!"
     in
       simplify (aexpl_lambda FappEID)
 
@@ -774,9 +775,9 @@ struct
   let cons_aexp_list cons_fexp =
     let rec cons_aexp_list exp arg_list =
       match exp with
-	  FfunE (ConsE id) -> Some (id, (A.of_list arg_list))
-	| FappE (exp, a)   -> cons_aexp_list exp (a :: arg_list)
-	| _                -> None
+          FfunE (ConsE id) -> Some (id, (A.of_list arg_list))
+        | FappE (exp, a)   -> cons_aexp_list exp (a :: arg_list)
+        | _                -> None
     in cons_aexp_list cons_fexp []
 
   let make_var_exp name pd =
@@ -801,35 +802,35 @@ struct
 
   let fixity_scan_gendecl =
     function
-	(D.Fixity (fix, id_list), tcls) ->
-	  let _ = List.map (fun id -> ID.as_op_set_fixity id (fix, tcls)) id_list in ()
+        (D.Fixity (fix, id_list), tcls) ->
+          let _ = List.map (fun id -> ID.as_op_set_fixity id (fix, tcls)) id_list in ()
       | (D.TypeSig (id_list, _, _), None) ->
-	  ()
+          ()
       | (D.TypeSig (id_list, _, _), Some tcls) ->
-	  let _ = List.map (fun id -> ID.as_op_set_typesig id tcls) id_list in ()
+          let _ = List.map (fun id -> ID.as_op_set_typesig id tcls) id_list in ()
       | _ -> ()
 
   let fixity_scan_decl =
     function
-	D.GenDecl g -> fixity_scan_gendecl (g, None)
+        D.GenDecl g -> fixity_scan_gendecl (g, None)
       | _ -> ()
 
   let fixity_scan_cdecl tcls =
     function
-	D.GenDeclC g -> fixity_scan_gendecl (g, (Some tcls))
+        D.GenDeclC g -> fixity_scan_gendecl (g, (Some tcls))
       | _ -> ()
-	  
+          
   let fixity_scan_topdecl =
     function 
-	D.Decl d -> fixity_scan_decl d
+        D.Decl d -> fixity_scan_decl d
       | D.Class (ctx, cls, _, cdecl_list) ->
-	  let _ = List.map (fun cdecl -> fixity_scan_cdecl (ID.class_find cls) cdecl) cdecl_list in
-	    ()
+          let _ = List.map (fun cdecl -> fixity_scan_cdecl (ID.class_find cls) cdecl) cdecl_list in
+            ()
       | _ -> ()
 
   let fixity_scan_module =
     function
-	(_, _, (_, topdecl_list)) -> List.map fixity_scan_topdecl topdecl_list
+        (_, _, (_, topdecl_list)) -> List.map fixity_scan_topdecl topdecl_list
 
 
 
@@ -837,54 +838,54 @@ struct
 
   let rec scan_exp_top pdata =
       function
-	  E.Top (exp, x) -> E.Top ((scan_exp0 pdata exp), x)
-	| x -> lastScanBug := Some x; failwith "Syntax BUG!!"
+          E.Top (exp, x) -> E.Top ((scan_exp0 pdata exp), x)
+        | x -> lastScanBug := Some x; failwith "Syntax BUG!!"
 
   and scan_exp0 pdata =
     function
-	E.Exp0 exp0 -> (scan_op2exp pdata exp0)
+        E.Exp0 exp0 -> (scan_op2exp pdata exp0)
       | x -> x
 
   and scan_op2exp pdata list =
     match list with
-	E.ExpF (exp, E.Op2End) -> scan_exp10 pdata exp
+        E.ExpF (exp, E.Op2End) -> scan_exp10 pdata exp
       | E.ExpF (expAA, E.Op2F (op_aa, (E.ExpF (expBB, E.Op2End)))) ->
-	  E.VarOp2E (op_aa, scan_exp10 pdata expAA, scan_exp10 pdata expBB)
+          E.VarOp2E (op_aa, scan_exp10 pdata expAA, scan_exp10 pdata expBB)
       | E.ExpF (expAA, E.Op2F (op_aa, ((E.ExpF (expBB, E.Op2F (op_bb, rest))) as cdr))) ->
-	  (let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
-	   let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
-	     (* Printf.printf "(%s, %d) vs (%s, %d)\n" op_aa.ID.name (snd aa_fixity) op_bb.ID.name (snd bb_fixity); *)
-	     match (aa_fixity, bb_fixity) with
-	         ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-		   scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa, expAA, expBB), E.Op2F (op_bb, rest)))
-	       | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
-		   scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa, expAA, expBB), E.Op2F (op_bb, rest)))
-	       | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-		   E.VarOp2E (op_aa, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
-	       | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
-		   E.VarOp2E (op_aa, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
-	       | _ ->
-		   failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
-			       (fixity_str aa_fixity)
-			       (fixity_str bb_fixity)))
+          (let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
+           let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
+             (* Printf.printf "(%s, %d) vs (%s, %d)\n" op_aa.ID.name (snd aa_fixity) op_bb.ID.name (snd bb_fixity); *)
+             match (aa_fixity, bb_fixity) with
+                 ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
+                   scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa, expAA, expBB), E.Op2F (op_bb, rest)))
+               | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
+                   scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa, expAA, expBB), E.Op2F (op_bb, rest)))
+               | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
+                   E.VarOp2E (op_aa, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
+               | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
+                   E.VarOp2E (op_aa, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
+               | _ ->
+                   failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
+                               (fixity_str aa_fixity)
+                               (fixity_str bb_fixity)))
       | _ -> failwith "Arity 2 operator expression syntax error."
 
   and scan_atom_exp pdata =
     function
-	E.ParenE exp -> E.ParenE (scan_exp_top pdata exp)
+        E.ParenE exp -> E.ParenE (scan_exp_top pdata exp)
       | E.TupleE elist -> E.TupleE (L.map (fun exp -> scan_exp_top pdata exp) elist)
       | E.ListE elist -> E.ListE (L.map (fun exp -> scan_exp_top pdata exp) elist)
       | x -> x
 
   and scan_fun_exp pdata =
     function
-	E.FfunE aexp -> E.FfunE (scan_atom_exp pdata aexp)
+        E.FfunE aexp -> E.FfunE (scan_atom_exp pdata aexp)
       | E.FappE (fexp, aexp) -> E.FappE (scan_fun_exp pdata fexp, scan_atom_exp pdata aexp)
       | E.FappEID -> failwith "Syntax BUG!!. FappEID found."
 
   and scan_exp10 pdata exp10 =
     match exp10 with
-	E.LambdaE (x, exp) -> E.LambdaE (x, scan_exp_top pdata exp)
+        E.LambdaE (x, exp) -> E.LambdaE (x, scan_exp_top pdata exp)
       | E.LetE (decl_list, exp) -> E.LetE (L.map (op2_scan_decl pdata) decl_list, scan_exp_top pdata exp)
       | E.IfE (pred, t, f) -> E.IfE (scan_exp_top pdata pred, scan_exp_top pdata t, scan_exp_top pdata f)
       | E.CaseE (exp, x) -> E.CaseE (scan_exp_top pdata exp, x)
@@ -894,20 +895,20 @@ struct
 
   and scan_do_stmt pdata stmt =
     match stmt with
-	DS.Exp (exp) -> DS.Exp (scan_exp_top pdata exp)
+        DS.Exp (exp) -> DS.Exp (scan_exp_top pdata exp)
       | DS.Cons (pat, exp) -> DS.Cons (op2_scan_pat pdata pat, scan_exp_top pdata exp)
       | DS.Let (dlist) -> DS.Let (List.map (op2_scan_decl pdata) dlist)
       | DS.Empty -> DS.Empty
 
   and op2_scan_pat pdata =
     function
-	P.Pat0 (patf) -> P.scan_op2pat 0 pdata (op2_scan_pat pdata) patf
+        P.Pat0 (patf) -> P.scan_op2pat 0 pdata (op2_scan_pat pdata) patf
       | P.Pat1 (patf) -> P.scan_op2pat 1 pdata (op2_scan_pat pdata) patf
       | p -> op2_scan_atompat pdata p
 
   and op2_scan_atompat pdata =
     function
-	P.AsP (id, p) -> P.AsP (id, op2_scan_pat pdata p)
+        P.AsP (id, p) -> P.AsP (id, op2_scan_pat pdata p)
       | P.ConP (id, plist) -> P.ConP (id, L.map (fun p0 -> op2_scan_pat pdata p0) plist)
       | P.LabelP (id, idp_list) -> P.LabelP (id, (L.map (fun (id, p0) -> (id, op2_scan_pat pdata p0)) idp_list))
       | P.TupleP (plist) -> P.TupleP (L.map (fun p0 -> op2_scan_pat pdata p0) plist)
@@ -917,52 +918,52 @@ struct
 
   and op2_scan_funlhs pdata =
     function
-	D.Op2Pat (varop, (pat_aa, pat_bb)) ->
-	  D.Op2Pat (varop, (op2_scan_pat pdata pat_aa, op2_scan_pat pdata pat_bb))
+        D.Op2Pat (varop, (pat_aa, pat_bb)) ->
+          D.Op2Pat (varop, (op2_scan_pat pdata pat_aa, op2_scan_pat pdata pat_bb))
       | D.NestDec (lhs, pat_list) ->
-	  D.NestDec (op2_scan_funlhs pdata lhs, L.map (fun p -> op2_scan_pat pdata p) pat_list)
+          D.NestDec (op2_scan_funlhs pdata lhs, L.map (fun p -> op2_scan_pat pdata p) pat_list)
       | x -> x
 
   and op2_scan_guard pdata =
     function
-	(GD.Guard gde, exp) -> (GD.Guard (scan_exp0 pdata gde), scan_exp_top pdata exp)
+        (GD.Guard gde, exp) -> (GD.Guard (scan_exp0 pdata gde), scan_exp_top pdata exp)
 
   and op2_scan_rhs pdata =
       function
-	  D.Rhs (exp, None) -> D.Rhs (scan_exp_top pdata exp, None)
-	| D.Rhs (exp, Some exp_decl_list) -> D.Rhs (scan_exp_top pdata exp, Some (L.map (op2_scan_decl pdata) exp_decl_list))
-	| D.RhsWithGD (gdrhs_list, None) -> D.RhsWithGD (L.map (op2_scan_guard pdata) gdrhs_list, None)
-	| D.RhsWithGD (gdrhs_list, Some exp_decl_list) -> D.RhsWithGD (L.map (op2_scan_guard pdata) gdrhs_list, Some (List.map (op2_scan_decl pdata) exp_decl_list))
+          D.Rhs (exp, None) -> D.Rhs (scan_exp_top pdata exp, None)
+        | D.Rhs (exp, Some exp_decl_list) -> D.Rhs (scan_exp_top pdata exp, Some (L.map (op2_scan_decl pdata) exp_decl_list))
+        | D.RhsWithGD (gdrhs_list, None) -> D.RhsWithGD (L.map (op2_scan_guard pdata) gdrhs_list, None)
+        | D.RhsWithGD (gdrhs_list, Some exp_decl_list) -> D.RhsWithGD (L.map (op2_scan_guard pdata) gdrhs_list, Some (List.map (op2_scan_decl pdata) exp_decl_list))
 
   and op2_scan_decl pdata =
     function
-	D.FunDec (lhs, rhs) -> D.FunDec ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs))
+        D.FunDec (lhs, rhs) -> D.FunDec ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs))
       | D.PatFunDec (pat, rhs) -> D.PatFunDec ((op2_scan_pat pdata pat), (op2_scan_rhs pdata rhs))
       | x -> x
 
   and op2_scan_cdecl pdata tcls =
     function
-	D.FunDecC (lhs, rhs) -> D.FunDecC ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs))
+        D.FunDecC (lhs, rhs) -> D.FunDecC ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs))
       | x -> x
 
   and op2_scan_idecl pdata tcls =
     function
-	D.FunDecI (lhs, rhs) -> D.FunDecI ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs))
+        D.FunDecI (lhs, rhs) -> D.FunDecI ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs))
       | x -> x
 
   and op2_scan_topdecl pdata =
     function 
-	D.Decl d -> D.Decl (op2_scan_decl pdata d)
+        D.Decl d -> D.Decl (op2_scan_decl pdata d)
       | D.Class (ctx, cls, x, cdecl_list) ->
-	  let new_cdecl_list = List.map (fun cdecl -> op2_scan_cdecl pdata (ID.class_find cls) cdecl) cdecl_list in
-	    D.Class (ctx, cls, x, new_cdecl_list)
+          let new_cdecl_list = List.map (fun cdecl -> op2_scan_cdecl pdata (ID.class_find cls) cdecl) cdecl_list in
+            D.Class (ctx, cls, x, new_cdecl_list)
       | D.Instance (ctx, cls, x, idecl_list) ->
-	  let new_idecl_list = List.map (fun idecl -> op2_scan_idecl pdata (ID.class_find cls) idecl) idecl_list in
-	    D.Instance (ctx, cls, x, new_idecl_list)
+          let new_idecl_list = List.map (fun idecl -> op2_scan_idecl pdata (ID.class_find cls) idecl) idecl_list in
+            D.Instance (ctx, cls, x, new_idecl_list)
       | x -> x
 
   and op2_scan_module pdata =
     function
-	(x, y, (z, topdecl_list)) -> (x, y, (z, List.map (op2_scan_topdecl pdata) topdecl_list))
+        (x, y, (z, topdecl_list)) -> (x, y, (z, List.map (op2_scan_topdecl pdata) topdecl_list))
     
 end
