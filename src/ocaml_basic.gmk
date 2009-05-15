@@ -1,4 +1,4 @@
-##
+## -*- Makefile -*-
 ##
 ##
 
@@ -15,7 +15,9 @@ stdlib_archives = \
 	unix \
 ##	camlp4
 
-ocaml_load_path = $(shell for l in $(stdlib_interfaces); do ocamlfind query $$l ; done | sort -u | sed 's/^/-I /') -I $(shell ocamlfind query camlp4)
+ocaml_inc_path = $(shell for l in $(stdlib_interfaces); do ocamlfind query -i-format $$l ; done | sort -u) $(shell ocamlfind query -i-format camlp4)
+ocaml_load_path = $(shell for l in $(stdlib_interfaces); do ocamlfind query -format "-I %d -ccopt -L%d" $$l ; done | sort -u) $(shell ocamlfind query -format "-I %d -ccopt -L%d" camlp4)
+ocaml_extra_inc_path = 
 ocaml_extra_load_path = 
 
 ocamlyacc = ocamlyacc
@@ -28,19 +30,19 @@ ocamlc_opt = $(ocaml_warning) $(ocamlc_debug)
 ocamlc = ocamlc.opt
 
 byte_stdlibs = $(stdlib_archives:=.cma)
-BYTE_COMPILE.ml = $(ocamlc) $(ocamlc_opt) $(ocaml_load_path) $(ocaml_extra_load_path) -c
-BYTE_LINK.ml = $(ocamlc) $(ocamlc_opt) $(ocaml_load_path) $(ocaml_extra_load_path)
+BYTE_COMPILE.ml = $(ocamlc) $(ocamlc_opt) $(ocaml_inc_path) $(ocaml_extra_inc_path) -c
+BYTE_LINK.ml = $(ocamlc) $(ocamlc_opt) $(ocaml_inc_path) $(ocaml_extra_inc_path) $(ocaml_load_path) $(ocaml_extra_load_path)
 BYTE_LINK.cmo = $(ocamlc) $(ocamlc_opt) $(ocaml_load_path) $(ocaml_extra_load_path)
 
-INTERFACE.ml = $(ocamlc) $(ocamlc_opt) $(ocaml_load_path) $(ocaml_extra_load_path) -i
+INTERFACE.ml = $(ocamlc) $(ocamlc_opt) $(ocaml_inc_path) $(ocaml_extra_inc_path) -i
 
 
 ocamlopt_opt = $(ocaml_warning)
 ocamlopt = ocamlopt.opt
 
 nat_stdlibs = $(stdlib_archives:=.cmxa)
-NAT_COMPILE.ml = $(ocamlopt) $(ocamlopt_opt) $(ocaml_load_path) $(ocaml_extra_load_path) -c
-NAT_LINK.ml = $(ocamlopt) $(ocamlopt_opt) $(ocaml_load_path) $(ocaml_extra_load_path)
+NAT_COMPILE.ml = $(ocamlopt) $(ocamlopt_opt) $(ocaml_inc_path) $(ocaml_extra_inc_path) -c
+NAT_LINK.ml = $(ocamlopt) $(ocamlopt_opt) $(ocaml_inc_path) $(ocaml_extra_inc_path) $(ocaml_load_path) $(ocaml_extra_load_path)
 NAT_LINK.cmx = $(ocamlopt) $(ocamlopt_opt) $(ocaml_load_path) $(ocaml_extra_load_path)
 
 

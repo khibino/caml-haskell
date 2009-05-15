@@ -91,7 +91,7 @@ let primTable =
                                  begin
                                    match (x, y) with
                                        (SYN.Int (xi, _), SYN.Int (yi, _)) -> 
-                                         Printf.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi);
+                                         (* Printf.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi); *)
                                          Literal (SYN.Int ((i64f xi yi), T.implicit_loc))
                                      | (SYN.Int (xi, _), SYN.Float (yf, _)) -> Literal (SYN.Float ((floatf (Int64.to_float xi) yf), T.implicit_loc))
                                      | (SYN.Float (xf, _), SYN.Int (yi, _)) -> Literal (SYN.Float ((floatf xf (Int64.to_float yi)), T.implicit_loc))
@@ -119,7 +119,7 @@ let primTable =
                                    begin
                                      match (x, y) with
                                          (SYN.Int (xi, _), SYN.Int (yi, _)) ->
-                                           Printf.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi);
+                                           (* Printf.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi); *)
                                            i64f xi yi
                                        | (SYN.Int (xi, _), SYN.Float (yf, _)) -> floatf (Int64.to_float xi) yf
                                        | (SYN.Float (xf, _), SYN.Int (yi, _)) -> floatf xf (Int64.to_float yi)
@@ -229,7 +229,7 @@ let dummy_eval_arg_exp (env : 'module_e env_t) (aexp : E.aexp) =
   Bottom
 
 (* let eval_exp = dummy_eval_exp *)
-let eval_func_exp = dummy_eval_func_exp
+(* let eval_func_exp = dummy_eval_func_exp *)
 (* let eval_arg_exp = dummy_eval_arg_exp *)
 
 
@@ -454,14 +454,13 @@ and eval_arg_exp env =
           if H.mem primTable id.ID.name then
             H.find primTable id.ID.name
           else
+            (* let _ = print_endline id.ID.name in *)
             let thunk = eval_id env id in
               thunk ()
         end
 
-(*
     | E.ConsE (id) ->
-        let v = Cons (id, [])) in v
-*)
+        let v = Cons (id, []) in v
          
     | E.LiteralE (lit) -> Literal lit
 
@@ -473,6 +472,21 @@ and eval_arg_exp env =
 
     | x -> failwith (Printf.sprintf "aexp: Not implemented: %s" (dump_aexp x))
 
+
+and eval_func_exp env =
+  function
+      E.FfunE aexp ->
+	eval_arg_exp env aexp
+
+    | E.FappE (fexp, aexp) -> 
+	apply_closure env (eval_func_exp env fexp) [aexp]
+
+    | E.FappEID -> failwith ("BUG: E.FappEID found.")
+
+and decl_list_local_env env eval_f decl_list =
+  let loc_env = local_env env in
+  let _ = L.map (fun decl -> eval_f loc_env decl) decl_list in
+    loc_env
 
 and eval_exp env =
   function
@@ -489,10 +503,8 @@ and eval_exp env =
            | E.VarOp2E (op, lexp, rexp) ->
                apply_closure env (eval_arg_exp env (E.VarE op)) [(E.ParenE lexp); (E.ParenE rexp)]
 
-(*
            | E.LetE (decl_list, exp) -> 
                eval_exp (decl_list_local_env env eval_decl decl_list) exp
-*)
 
            | E.IfE (pre_e, then_e, else_e) -> 
                (match (eval_exp env pre_e) with
@@ -511,10 +523,96 @@ and eval_exp env =
 
            | x -> failwith (Printf.sprintf "exp: Not implemented: %s" (dump_exp x)))
 
-(*
-*)
+and pre_eval_rhs env rhs =
+  let where_env w = match w with None -> env | Some dl -> (decl_list_local_env env eval_decl dl) in
+  let (ev_exp, env) =
+    match rhs with
+	D.Rhs (exp, where) -> (exp, where_env where)
+      | D.RhsWithGD (gdrhs_list, where) ->
+	  (L.fold_right
+	     (fun gdrhs else_e ->
+		match gdrhs with
+		    (GD.Guard gde, exp) ->
+		      E.IfE (gde, exp, else_e))
+	     gdrhs_list
+	     (E.FexpE (E.FappE (E.FfunE (E.make_var_exp "error" (env_get_prelude env)), E.LiteralE (SYN.String ("Unmatched pattern", T.implicit_loc))))),
+	   where_env where)
+				 
+(*       | x -> failwith (Printf.sprintf "rhs: Not implemented: %s" (Std.dump x)) *)
+  in
+    ((fun funlhs ->
+	let _ = match funlhs with
+	    D.FunDecLV (sym, apat_list) ->
+	      bind_thunk env sym (make_thawed (mk_closure env apat_list ev_exp))
+	  | D.Op2Pat (op, (arg1, arg2)) ->
+	      bind_thunk env op (make_thawed (mk_closure env [arg1; arg2] ev_exp))
+	  | x -> failwith (Printf.sprintf "funlhs: Not implemented: %s" (Std.dump x))
+	in ()),
+     (fun pat -> let _ = pattern_match env pat env ev_exp in () ))
+
+and eval_gendecl env _ = ()
+
+and eval_idecl env =
+  function
+      D.FunDecI (lhs, rhs) ->
+	let (bfun, _) = pre_eval_rhs env rhs in
+	  bfun lhs
+    | D.BindI (id, rhs) ->
+	let (_, bpat) = pre_eval_rhs env rhs in
+	  bpat (P.VarP id)
+    | D.EmptyI -> ()
+
+and eval_cdecl env =
+  function
+      D.FunDecC (lhs, rhs) ->
+	let (bfun, _) = pre_eval_rhs env rhs in
+	  bfun lhs
+    | D.BindC (id, rhs) ->
+	let (_, bpat) = pre_eval_rhs env rhs in
+	  bpat (P.VarP id)
+    | D.GenDeclC gendecl -> eval_gendecl env gendecl
+
+and eval_decl env =
+  function
+      D.FunDec (lhs, rhs) ->
+	let (bfun, _) = pre_eval_rhs env rhs in
+	  bfun lhs
+    | D.PatFunDec (pat, rhs) ->
+	let (_, bpat) = pre_eval_rhs env rhs in
+	  bpat pat
+    | D.GenDecl gendecl -> eval_gendecl env gendecl
+
+(*     | x -> failwith (Printf.sprintf "decl: Not implemented: %s" (dump_decl x)) *)
+
+let eval_topdecl env =
+  function 
+      D.Type (_) -> ()
+    | D.Data (_) -> ()
+    | D.NewType (_) -> ()
+    | D.Class (_, _, _, cdecl_list) -> let _ = L.map (fun cd -> eval_cdecl env cd) cdecl_list in ()
+    | D.Instance (_, _, _, idecl_list) -> let _ = L.map (fun instd -> eval_idecl env instd) idecl_list in ()
+    | D.Default (_) -> ()
+    | D.Decl d -> eval_decl env d
+    (* | x -> failwith (Printf.sprintf "topdecl: Not implemented: %s" (dump_topdecl x)) *)
+
+let eval_module env =
+  function
+(*       (x, y, (z, topdecl_list)) -> (x, y, (z, List.map (eval_topdecl env) topdecl_list)) *)
+      (x, y, (z, topdecl_list)) ->
+	let _ = List.map (eval_topdecl env) topdecl_list in ()
 
 (* eval_program : 
    全ての module を thunk tree に変換した後で
    toplevel環境 main シンボルに束縛されている thunk を展開 *)
+let eval_program env program =
+  let _ = program.pdata_assoc.OA.iter (fun name pd ->
+					 if name = "Prelude" then () else
+					   eval_module env pd.PD.syntax) in
+  let main_pd = program.pdata_assoc.OA.find "Main" in
+    eval_arg_exp env (E.VarE (ID.make_id_core "main" (ID.Qual main_pd.PD.local_module.PD.mn_ref) T.implicit_loc))
 
+
+(*  *)
+let eval_test fn =
+  let prog = load_program (LO.parse_files_with_prelude [fn]) in
+    eval_program (env_create prog) prog

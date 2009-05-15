@@ -26,6 +26,6 @@ taky x y z
                (taky (y - 1) z x)
                (taky (z - 1) x y)
 
-main = print (taky 3 2 1)
+main = print (taky 100 1 0)
 --main = print (taky 0 0 0)
 --main = print (taky 10 3 1)

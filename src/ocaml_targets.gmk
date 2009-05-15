@@ -1,8 +1,10 @@
+## -*- Makefile -*-
+##
+##
 
+%.byte: $(byte_libs) %.cmo
+	$(BYTE_LINK.cmo) -o $@ $(byte_stdlibs) $(byte_libs) $^
 
-%_byte: %.cmo
-	$(BYTE_LINK.cmo) -o $@ $(byte_stdlibs) $^
-
-%: %.cmx
-	$(NAT_LINK.cmx) -o $@ $(nat_stdlibs) $^
+%.nat: $(nat_libs) %.cmx
+	$(NAT_LINK.cmx) -o $@ $(nat_stdlibs) $(nat_libs) $^
 
