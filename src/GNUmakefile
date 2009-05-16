@@ -98,7 +98,7 @@ clean:
 	$(RM) *.cmi
 	$(RM) *.cmo
 	$(RM) *.cmx *.o
-	$(RM) *.cma
+	$(RM) *.cma *.cmxa *.a
 	$(RM) parser.mli parser.ml lexer0.ml hsStr.ml
 	$(RM) .depends
 	$(RM) Prelude.lex0 Prelude.loin Prelude.layout Prelude.parse
