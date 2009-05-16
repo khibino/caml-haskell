@@ -272,8 +272,8 @@ let rec make_arg_exp_thunk env arg_exp =
 and make_exp_thunk env exp =
   make_thunk eval_exp env exp
 
-(* Visitor for Pattern *)
-and scan_pattern pat =
+(* Lazy pattern match against thunk *)
+and bind_pat_with_thunk pat =
   let sub_patterns_match env pat_list thunk_list =
     L.fold_left2
       (fun (matchp_sum, tlist_sum) pat thunk ->
@@ -283,32 +283,22 @@ and scan_pattern pat =
       pat_list
       thunk_list
   in
-  match pat with
-      P.PlusP (id, i64, _) ->
-        (P.PlusP ((ID.unloc id), i64, T.implicit_loc),
-         ((fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern pat))),
-          (* (fun _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern pat))) *) ()
-         ))
-    | P.VarP (id) ->
-        (P.VarP (ID.unloc id),
-         ((fun env thunk ->
-             let _ = bind_thunk env id thunk in (true, [thunk])),
-          (* (fun env varref -> (true, varref)) *) ()
-         ))
-    | P.AsP (id, pat) ->
-        (P.AsP (ID.unloc id, path_hash pat),
-         ((fun env thunk ->
+    match pat with
+        P.PlusP (id, i64, _) ->
+          (fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern pat)))
+
+      | P.VarP (id) ->
+          (fun env thunk ->
+             let _ = bind_thunk env id thunk in (true, [thunk]))
+
+      | P.AsP (id, pat) ->
+          (fun env thunk ->
              let (_, (matchp, tlist)) = (bind_thunk env id thunk,
                                          bind_pat_with_thunk pat env thunk)
-             in (matchp, thunk :: tlist)),
-          (* (fun env varref ->
-             let (p, sub_varref) = match_p pat env varref in
-             let _ = varref := !sub_varref in
-             (p, varref)) *) ()
-         ))
-    | P.ConP (id, pat_list) ->
-        (P.ConP (ID.unloc id, L.map path_hash pat_list),
-         ((fun env thunk ->
+             in (matchp, thunk :: tlist))
+
+      | P.ConP (id, pat_list) ->
+          (fun env thunk ->
              let value = thunk ()
                (* コンストラクタにマッチする値かどうかを知るには
                   評価する必要がある *)
@@ -316,12 +306,10 @@ and scan_pattern pat =
                match value with
                    Cons (cid, args) when (ID.eq cid id)
                      -> sub_patterns_match env pat_list args
-                 | _ -> (false, [thunk])),
-          (* (fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern pat))) *) ()
-         ))
-    | P.LabelP (id, fpat_list) ->
-        (P.LabelP (ID.unloc id, L.map (fun (id, pat) -> (ID.unloc id, pat)) fpat_list),
-         ((fun env thunk ->
+                 | _ -> (false, [thunk]))
+
+      | P.LabelP (id, fpat_list) ->
+          (fun env thunk ->
              let value = thunk () in
                match value with
                    LabelCons (cid, lmap) when (ID.eq cid id) ->
@@ -331,87 +319,51 @@ and scan_pattern pat =
                             (matchp_sum & matchp, L.append tlist_sum tlist))
                        (true, [])
                        fpat_list
-                 | _                                         -> (false, [thunk])),
-          (* (fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern pat))) *) ()
-         ))
-    | P.LiteralP literal ->
-        (P.LiteralP (SYN.unloc_literal literal),
-         ((fun _ thunk -> match thunk () with
+                 | _                                         -> (false, [thunk]))
+
+      | P.LiteralP literal ->
+          (fun _ thunk -> match thunk () with
                Literal expl when (SYN.eq_literal expl literal) -> (true, [thunk])
-             | _                                               -> (false, [thunk])),
-          (* (fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern pat))) *) ()
-         ))
-    | P.WCardP ->
-        (P.WCardP,
-         ((fun _ thunk -> (true, [thunk])),
-          (* (fun _ varref -> (true, varref)) *) ()
-         ))
-    | P.TupleP pat_list ->
-        (P.TupleP (L.map path_hash pat_list),
-         ((fun env thunk ->
+             | _                                               -> (false, [thunk]))
+
+      | P.WCardP ->
+          (fun _ thunk -> (true, [thunk]))
+
+      | P.TupleP pat_list ->
+          (fun env thunk ->
              let value = thunk () in
                match value with
                    Tuple (args) when (L.length args) = (L.length pat_list)
                      -> sub_patterns_match env pat_list args
-                 | _ -> (false, [thunk])),
-          (* (fun env varref ->
-             match eval_thunk !varref with
-             Tuple pre_vl ->
-                   (L.fold_left2 (fun (snap_mp, Tuple snap) p pre_v ->
-                                    let (mp, result) = match_p p env pre_v in
-                                      ((snap_mp && mp), Tuple (result :: snap))) (true, Tuple [])  pat_list pre_vl)
-               | _ -> false) *) ()
-         ))
-    | P.ListP pat_list ->
-        (P.ListP (L.map path_hash pat_list),
-         ((fun env thunk -> 
+                 | _ -> (false, [thunk]))
+
+      | P.ListP pat_list ->
+          (fun env thunk -> 
              let value = thunk () in
                match value with
                    List (args) when (L.length args) = (L.length pat_list)
                      -> sub_patterns_match env pat_list args
-                 | _ -> (false, [thunk])),
-          (* (fun env varref ->
-             match eval_thunk !varref with
-                 List pre_vl ->
-                   (L.fold_left2 (fun (snap_mp, List snap) p pre_v ->
-                                    let (mp, result) = match_p p env pre_v in
-                                      ((snap_mp && mp), List (result :: snap))) (true, List [])  pat_list pre_vl)
-               | _ -> false) *) ()
-         ))
-(*
-*)
+                 | _ -> (false, [thunk]))
+
 (*
     | P.MIntP (int64, _) ->
-        (P.MIntP (int64, T.implicit_loc),
-         ((fun _ thunk -> thunk),
-          (failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern pat))))
-        )
+        (fun _ thunk -> thunk)
+
     | P.MFloatP (float, _) ->
-        (P.MFloatP (float, T.implicit_loc),
-         ((fun _ thunk -> thunk),
-          (fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern pat))))
-        )
+        (fun _ thunk -> thunk)
+
     | P.Irref pat ->
-        (P.Irref (path_hash pat),
-         ((fun env thunk -> bind_pat_with_thunk pat env thunk),
-          (fun env varref -> match_p pat env varref))
-        )
+        (fun env thunk -> bind_pat_with_thunk pat env thunk)
 
     (*     | P.Pat0 of pat op2list_patf *)
     (*     | P.Pat1 of pat op2list_patf *)
 
     | P.ConOp2P (id, pat1, pat2) ->
-        (P.ConOp2P (ID.unloc id, (path_hash pat1), (path_hash pat2)),
-         ((fun env thunk -> let _ = (bind_pat_with_thunk pat1 env thunk, bind_pat_with_thunk pat2 env thunk) in thunk),
-          (fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern pat))))
-        )
+        (fun env thunk -> let _ = (bind_pat_with_thunk pat1 env thunk, bind_pat_with_thunk pat2 env thunk) in thunk)
+
     | _ -> failwith ("Not converted Pat0 or Pat1 found. parser BUG!!")
 *)
     | _ -> failwith "Not impelmented"
-
-and path_hash p = fst (scan_pattern p) (* rename from to_pat_for_hash *)
-and bind_pat_with_thunk p = fst (snd (scan_pattern p))
-(* and match_p p = snd (snd (scan_pattern p)) *)
 
 (* pattern_match : thunk を pattern にマッチ *)
 and pattern_match local_env pat caller_env evalee =
