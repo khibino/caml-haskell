@@ -214,14 +214,14 @@ let dump_pattern p =
 
 let applyClosureStack : e_module_type value Stack.t = Stack.create ()
 
-let dummy_eval_exp (env : 'module_e env_t) (exp : E.t) =
-  Bottom
+(* let dummy_eval_exp (env : 'module_e env_t) (exp : E.t) =
+  Bottom *)
 
-let dummy_eval_func_exp (env : 'module_e env_t) (fexp : E.fexp) =
-  Bottom
+(* let dummy_eval_func_exp (env : 'module_e env_t) (fexp : E.fexp) =
+  Bottom *)
 
-let dummy_eval_arg_exp (env : 'module_e env_t) (aexp : E.aexp) =
-  Bottom
+(* let dummy_eval_arg_exp (env : 'module_e env_t) (aexp : E.aexp) =
+  Bottom *)
 
 (* let eval_exp = dummy_eval_exp *)
 (* let eval_func_exp = dummy_eval_func_exp *)
