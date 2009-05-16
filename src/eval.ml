@@ -47,7 +47,8 @@ type 'module_e value =
   | LabelCons of (ID.idwl * (ID.idwl, 'module_e thunk_type) OH.t )
   | Tuple of ('module_e thunk_type list)
   | List of ('module_e thunk_type list)
-  | Closure of (P.pat list * E.t * 'module_e env_t) (* function or constructor *)
+  | Closure of (P.pat list * E.t * 'module_e env_t
+                * ('module_e env_t -> 'module_e env_t)) (* function or constructor *)
       (* arguemnt-pattern-list, expression, environment *)
   | Primitive of (('module_e thunk_type list -> 'module_e value) * int)
 
@@ -186,8 +187,11 @@ let local_env env =
 let mk_literal lit =
   Literal lit
 
-let mk_closure env pat_list exp =
-  Closure (pat_list, exp, env)
+let mk_simple_closure env pat_list exp =
+  Closure (pat_list, exp, env, (fun x -> x))
+
+let mk_closure env pat_list exp where_env_fun =
+  Closure (pat_list, exp, env, where_env_fun)
 
 
 let lastErrAExp : E.aexp option ref = ref None
@@ -417,13 +421,13 @@ and pattern_match_arg_exp local_env pat caller_env evalee =
 
 and apply_closure caller_env closure arg_exp_list =
   match closure with
-      Closure (apat_list, body_exp, env) ->
+      Closure (apat_list, body_exp, env, where_env_fun) ->
         Stack.push closure applyClosureStack;
         let (loc_env, ac) = (local_env env, L.length arg_exp_list) in
         let (pbind_list, apat_rest) = arity_list_take apat_list ac in
         let _  = L.map2 (fun pat arg_exp -> pattern_match_arg_exp loc_env pat caller_env arg_exp) pbind_list arg_exp_list in
-          if apat_rest = [] then eval_exp loc_env body_exp
-          else mk_closure loc_env apat_rest body_exp
+          if apat_rest = [] then eval_exp (where_env_fun loc_env) body_exp
+          else mk_closure loc_env apat_rest body_exp where_env_fun
     | Primitive (prim_fun, arity) ->
         let restc = arity - (L.length arg_exp_list) in
         let athunk_list = (L.map (fun aexp -> (make_arg_exp_thunk caller_env aexp)) arg_exp_list) in
@@ -484,7 +488,7 @@ and eval_exp env =
       E.Top (exp, _) -> eval_exp env exp
 
     | E.LambdaE (apat_list, exp) ->
-        let c = mk_closure env apat_list exp in c
+        let c = mk_simple_closure env apat_list exp in c
     | E.FexpE (E.FfunE (E.LiteralE lit)) ->
         let l = mk_literal lit in l
     | nv_exp ->
@@ -515,10 +519,11 @@ and eval_exp env =
            | x -> failwith (Printf.sprintf "exp: Not implemented: %s" (dump_exp x)))
 
 and pre_eval_rhs env rhs =
-  let where_env w = match w with None -> env | Some dl -> (decl_list_local_env env eval_decl dl) in
-  let (ev_exp, env) =
+  let where_env local_env = function
+      None -> local_env | Some dl -> (decl_list_local_env local_env eval_decl dl) in
+  let (ev_exp, new_local_env) =
     match rhs with
-	D.Rhs (exp, where) -> (exp, where_env where)
+	D.Rhs (exp, where) -> (exp, (fun le -> where_env le where))
       | D.RhsWithGD (gdrhs_list, where) ->
 	  (L.fold_right
 	     (fun gdrhs else_e ->
@@ -527,19 +532,19 @@ and pre_eval_rhs env rhs =
 		      E.IfE (gde, exp, else_e))
 	     gdrhs_list
 	     (E.FexpE (E.FappE (E.FfunE (E.make_var_exp "error" (env_get_prelude env)), E.LiteralE (SYN.String ("Unmatched pattern", T.implicit_loc))))),
-	   where_env where)
+	   (fun le -> where_env le where))
 				 
 (*       | x -> failwith (Printf.sprintf "rhs: Not implemented: %s" (Std.dump x)) *)
   in
     ((fun funlhs ->
 	let _ = match funlhs with
 	    D.FunDecLV (sym, apat_list) ->
-	      bind_thunk env sym (make_thawed (mk_closure env apat_list ev_exp))
+	      bind_thunk env sym (make_thawed (mk_closure env apat_list ev_exp new_local_env))
 	  | D.Op2Pat (op, (arg1, arg2)) ->
-	      bind_thunk env op (make_thawed (mk_closure env [arg1; arg2] ev_exp))
+	      bind_thunk env op (make_thawed (mk_closure env [arg1; arg2] ev_exp new_local_env))
 	  | x -> failwith (Printf.sprintf "funlhs: Not implemented: %s" (Std.dump x))
 	in ()),
-     (fun pat -> let _ = pattern_match env pat env ev_exp in () ))
+     (fun pat -> let _ = pattern_match env pat (new_local_env env) ev_exp in () ))
 
 and eval_gendecl env _ = ()
 
