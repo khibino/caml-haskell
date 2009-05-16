@@ -21,7 +21,18 @@ scratch_sources = \
 
 mlis = parser.mli
 
-sources = $(scratch_sources)
+
+toplevel_sources = \
+	lex0_main.ml \
+	loin_main.ml \
+	layout_main.ml \
+	parse_main.ml \
+	eval_main.ml
+
+sources = \
+	$(scratch_sources) \
+	$(toplevel_sources)
+
 
 scratch_byte_objs = $(scratch_sources:.ml=.cmo)
 scratch_nat_objs = $(scratch_sources:.ml=.cmx)

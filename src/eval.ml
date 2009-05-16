@@ -204,15 +204,6 @@ let dump_exp x =
 
 let lastErrPat : P.pat option ref = ref None
 
-(*
-let lastErrEnv = ref None
-
-let dump_pat_with_env x env =
-  lastErrPat := Some x;
-  lastErrEnv := Some env;
-  Std.dump x
-*)
-
 let dump_pattern p =
   lastErrPat := Some p;
   Std.dump p
