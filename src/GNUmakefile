@@ -96,7 +96,7 @@ clean:
 	$(RM) *.byte
 	$(RM) *.nat
 	$(RM) *.cmi
-	$(RM) *.cmo
+	$(RM) *.cmo *.annot
 	$(RM) *.cmx *.o
 	$(RM) *.cma *.cmxa *.a
 	$(RM) parser.mli parser.ml lexer0.ml hsStr.ml

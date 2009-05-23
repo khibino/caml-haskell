@@ -25,8 +25,9 @@ ocamllex = ocamllex
 ocamldep = ocamldep
 
 ocamlc_debug = -g
+ocamlc_annot = -annot
 #ocaml_warning = -w A
-ocamlc_opt = $(ocaml_warning) $(ocamlc_debug)
+ocamlc_opt = $(ocaml_warning) $(ocamlc_debug) $(ocamlc_annot)
 ocamlc = ocamlc.opt
 
 byte_stdlibs = $(stdlib_archives:=.cma)

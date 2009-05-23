@@ -631,7 +631,7 @@ struct
   type 'exp decl =
       GenDecl of gendecl
     | FunDec of ('exp funlhs * 'exp rhs)
-    | PatFunDec of (P.pat * 'exp rhs)
+    | PatBind of (P.pat * 'exp rhs)
 
   (* Instance *)
   and 'exp i =
@@ -650,8 +650,8 @@ struct
     | RhsWithGD of ('exp gdrhs * 'exp decl list option)
 
   and 'exp funlhs =
-      FunDecLV of (ID.idwl * P.pat list)
-    | Op2Pat of (ID.idwl * (P.pat * P.pat))
+      FunLV of (ID.idwl * P.pat list)
+    | Op2Fun of (ID.idwl * (P.pat * P.pat))
     | NestDec of ('exp funlhs * P.pat list)
 
   let op2lhs_op lhsd = fst lhsd
@@ -661,7 +661,7 @@ struct
   let op2lhs lhsd =
     let op = op2lhs_op lhsd in
     let _ = ID.fun_regist op true in
-      Op2Pat (op, (P.Pat1 (op2lhs_left lhsd), P.Pat1 (op2lhs_right lhsd)))
+      Op2Fun (op, (P.Pat1 (op2lhs_left lhsd), P.Pat1 (op2lhs_right lhsd)))
 
   type 'exp top =
       Type of (Type.typ * Type.typ)
@@ -675,6 +675,18 @@ struct
   let mk_class ctx name_id typev_id def =
     let _ = ID.class_regist name_id { cname = name_id.ID.name; type_var = typev_id.ID.name; ctxs = TClassCtx [] } in
       Class (ctx, name_id, typev_id, def)
+
+(*
+  let lhs_match ndecl decl_list get_lhs =
+    match (get_lhs ndecl), (get_lhs (List.hd decl_list)) with
+        (FunLV (id, _), FunLV (car_id, _)) when
+          id.ID.name = car_id.ID.name &&
+          id.ID.qual == car_id.ID.qual ->
+            
+
+
+  let fundec_cons 
+*)
 
 end
 
@@ -918,8 +930,8 @@ struct
 
   and op2_scan_funlhs pdata =
     function
-        D.Op2Pat (varop, (pat_aa, pat_bb)) ->
-          D.Op2Pat (varop, (op2_scan_pat pdata pat_aa, op2_scan_pat pdata pat_bb))
+        D.Op2Fun (varop, (pat_aa, pat_bb)) ->
+          D.Op2Fun (varop, (op2_scan_pat pdata pat_aa, op2_scan_pat pdata pat_bb))
       | D.NestDec (lhs, pat_list) ->
           D.NestDec (op2_scan_funlhs pdata lhs, L.map (fun p -> op2_scan_pat pdata p) pat_list)
       | x -> x
@@ -938,7 +950,7 @@ struct
   and op2_scan_decl pdata =
     function
         D.FunDec (lhs, rhs) -> D.FunDec ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs))
-      | D.PatFunDec (pat, rhs) -> D.PatFunDec ((op2_scan_pat pdata pat), (op2_scan_rhs pdata rhs))
+      | D.PatBind (pat, rhs) -> D.PatBind ((op2_scan_pat pdata pat), (op2_scan_rhs pdata rhs))
       | x -> x
 
   and op2_scan_cdecl pdata tcls =

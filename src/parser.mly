@@ -260,8 +260,8 @@ typ_comma_list:
 ;
                 
 decl_list:
-  SP_LEFT_BRACE semi_decl_list SP_RIGHT_BRACE  { $2 }   /*(n>0)*/
-| SP_LEFT_BRACE SP_RIGHT_BRACE  { [] }  /*(n=0)*/
+  SP_LEFT_BRACE semi_decl_list SP_RIGHT_BRACE  { $2 }  /*(* (n>0) *)*/
+| SP_LEFT_BRACE SP_RIGHT_BRACE  { [] }                 /*(* (n=0) *)*/
 ;
 
 semi_decl_list:
@@ -271,8 +271,9 @@ semi_decl_list:
 
 decl:
   gendecl  { D.GenDecl ($1) }
-| funlhs rhs  { D.FunDec ($1, $2) }
-| pat0 rhs  { D.PatFunDec ($1, $2) }
+| funlhs rhs  { D.FunDec ($1, $2) }  /*(* 4.4.3.1 関数束縛 *)*/
+| pat0 rhs  { D.PatBind ($1, $2) }   /*(* 4.4.3.2 パターン束縛 *)*/
+/*(* パターン x + i は pat0 になりえない。pat0 になりえるのは (x + i) *)*/
 ;
 
 cdecl_list:
@@ -499,13 +500,27 @@ tyvar_comma_list:
 */
 
 funlhs:
-  var apat_list  { I.fun_regist $1 true; D.FunDecLV($1, $2) }
+  var apat_list  { I.fun_regist $1 true; D.FunLV($1, $2) }
 | op2_pat_pair  { D.op2lhs $1 }
 | SP_LEFT_PAREN funlhs SP_RIGHT_PAREN apat_list  { D.NestDec ($2, $4) }
 ;
 
+
+/*(* 二項演算パターンのトップが最終的に関数束縛にされる *)*/
 op2_pat_pair:
-  pat10 op2_pat_pair_right  { (D.op2lhs_op $2,
+  ks_minus integer op2_pat_pair_right
+    { let p = match $2 with (S.Int x) -> P.MIntP x | _ -> failwith "negative integer literal pattern syntax error."
+      in (D.op2lhs_op $3,
+          (P.PatF (p, D.op2lhs_left $3),
+           D.op2lhs_right $3))
+    }
+| ks_minus float op2_pat_pair_right
+    { let p = match $2 with (S.Float x) -> P.MFloatP x | _ -> failwith "negative integer literal pattern syntax error."
+      in (D.op2lhs_op $3,
+          (P.PatF (p, D.op2lhs_left $3),
+           D.op2lhs_right $3))
+    }
+| pat10 op2_pat_pair_right  { (D.op2lhs_op $2,
                                 (P.PatF ($1, D.op2lhs_left $2),
                                  D.op2lhs_right $2)) }
 

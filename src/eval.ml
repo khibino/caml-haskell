@@ -490,9 +490,9 @@ and pre_eval_rhs env rhs =
   in
     ((fun funlhs ->
 	let _ = match funlhs with
-	    D.FunDecLV (sym, apat_list) ->
+	    D.FunLV (sym, apat_list) ->
 	      bind_thunk env sym (make_thawed (mk_closure env apat_list ev_exp new_local_env))
-	  | D.Op2Pat (op, (arg1, arg2)) ->
+	  | D.Op2Fun (op, (arg1, arg2)) ->
 	      bind_thunk env op (make_thawed (mk_closure env [arg1; arg2] ev_exp new_local_env))
 	  | x -> failwith (Printf.sprintf "funlhs: Not implemented: %s" (Std.dump x))
 	in ()),
@@ -525,23 +525,31 @@ and eval_decl env =
       D.FunDec (lhs, rhs) ->
 	let (bfun, _) = pre_eval_rhs env rhs in
 	  bfun lhs
-    | D.PatFunDec (pat, rhs) ->
+    | D.PatBind (pat, rhs) ->
 	let (_, bpat) = pre_eval_rhs env rhs in
 	  bpat pat
     | D.GenDecl gendecl -> eval_gendecl env gendecl
 
 (*     | x -> failwith (Printf.sprintf "decl: Not implemented: %s" (dump_decl x)) *)
 
-let eval_topdecl env =
-  function 
-      D.Type (_) -> ()
-    | D.Data (_) -> ()
-    | D.NewType (_) -> ()
-    | D.Class (_, _, _, cdecl_list) -> let _ = L.map (fun cd -> eval_cdecl env cd) cdecl_list in ()
-    | D.Instance (_, _, _, idecl_list) -> let _ = L.map (fun instd -> eval_idecl env instd) idecl_list in ()
-    | D.Default (_) -> ()
-    | D.Decl d -> eval_decl env d
-    (* | x -> failwith (Printf.sprintf "topdecl: Not implemented: %s" (dump_topdecl x)) *)
+let (lastEvalDecl : E.t D.decl option ref) = ref None
+
+let eval_topdecl env tdecl =
+  lastEvalDecl :=
+    match tdecl with
+        D.Type (_) -> None
+      | D.Data (_) -> None
+      | D.NewType (_) -> None
+      | D.Class (_, _, _, cdecl_list) ->
+          let _ = L.map (fun cd -> eval_cdecl env cd) cdecl_list in
+            None
+      | D.Instance (_, _, _, idecl_list) ->
+          let _ = L.map (fun instd -> eval_idecl env instd) idecl_list in
+            None
+      | D.Default (_) -> None
+      | D.Decl d ->
+          let _ = eval_decl env d in
+            Some d
 
 let eval_module env =
   function

@@ -83,9 +83,9 @@ and match_p p = snd (snd (scan_pattern p))
 
 and arg_pat_list =
   function
-      D.FunDecLV (fnsym, plist) ->
+      D.FunLV (fnsym, plist) ->
 	(P.VarP fnsym) :: plist
-    | D.Op2Pat (opsym, (pleft, pright)) ->
+    | D.Op2Fun (opsym, (pleft, pright)) ->
 	[(P.VarP opsym); pleft; pright]
     | D.NestDec (funlhs, plist) ->
 	L.rev_append plist (arg_pat_list funlhs)
@@ -132,7 +132,7 @@ and fv_decl pdata aplist =
   function
       D.FunDec (lhs, D.Rhs (exp, None)) ->
 	fv_exp pdata (L.rev_append aplist (arg_pat_list lhs)) exp
-    | D.PatFunDec (pat, D.Rhs (exp, None)) ->
+    | D.PatBind (pat, D.Rhs (exp, None)) ->
 	fv_exp pdata (pat :: aplist) exp
     | x -> failwith (Printf.sprintf "fv: decl: Not implemented:\n%s" (Std.dump x))
 
