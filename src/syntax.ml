@@ -630,7 +630,7 @@ struct
 
   type 'exp decl =
       GenDecl of gendecl
-    | FunDec of ('exp funlhs * 'exp rhs)
+    | FunDec of (('exp funlhs * 'exp rhs) list)
     | PatBind of (P.pat * 'exp rhs)
 
   (* Instance *)
@@ -676,15 +676,31 @@ struct
     let _ = ID.class_regist name_id { cname = name_id.ID.name; type_var = typev_id.ID.name; ctxs = TClassCtx [] } in
       Class (ctx, name_id, typev_id, def)
 
+  let lhs_from_decl =
+    function
+        FunDec ((lhs, rhs) :: _) -> Some lhs
+      | _ -> None
+
+  let merge_decl decl pre_decl =
+    match (decl, pre_decl) with
+        (FunDec declt, FunDec pre_declt) -> FunDec ((L.hd declt) :: pre_declt)
+      | _ -> assert false
+
+  let mdecl_merge ndecl decl_list get_lhs merge =
+    match decl_list with
+        [] -> [ndecl]
+      | pre_decl :: tail ->
+          begin
+            match ((get_lhs ndecl), (get_lhs pre_decl)) with
+                (Some (FunLV (id, _)), Some (FunLV (car_id, _))) when
+                  id.ID.name = car_id.ID.name &&
+                  id.ID.qual == car_id.ID.qual
+                  -> (merge_decl ndecl pre_decl) :: tail
+              | _ -> ndecl :: decl_list
+          end
+                  
+
 (*
-  let lhs_match ndecl decl_list get_lhs =
-    match (get_lhs ndecl), (get_lhs (List.hd decl_list)) with
-        (FunLV (id, _), FunLV (car_id, _)) when
-          id.ID.name = car_id.ID.name &&
-          id.ID.qual == car_id.ID.qual ->
-            
-
-
   let fundec_cons 
 *)
 
@@ -949,7 +965,8 @@ struct
 
   and op2_scan_decl pdata =
     function
-        D.FunDec (lhs, rhs) -> D.FunDec ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs))
+        (* D.FunDec (lhs, rhs) -> D.FunDec ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs)) *)
+        D.FunDec deflist -> D.FunDec (L.map (fun (lhs, rhs) -> (op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs)) deflist)
       | D.PatBind (pat, rhs) -> D.PatBind ((op2_scan_pat pdata pat), (op2_scan_rhs pdata rhs))
       | x -> x
 

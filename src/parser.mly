@@ -271,7 +271,7 @@ semi_decl_list:
 
 decl:
   gendecl  { D.GenDecl ($1) }
-| funlhs rhs  { D.FunDec ($1, $2) }  /*(* 4.4.3.1 関数束縛 *)*/
+| funlhs rhs  { D.FunDec [($1, $2)] }  /*(* 4.4.3.1 関数束縛 *)*/
 | pat0 rhs  { D.PatBind ($1, $2) }   /*(* 4.4.3.2 パターン束縛 *)*/
 /*(* パターン x + i は pat0 になりえない。pat0 になりえるのは (x + i) *)*/
 ;

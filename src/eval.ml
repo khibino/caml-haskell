@@ -3,6 +3,7 @@ module L = List
 module A = Array
 module Q = Queue
 module H = Hashtbl
+module F = Printf
 
 module OH = OrderedHash
 module OA = OnceAssoc
@@ -47,12 +48,13 @@ type 'module_e value =
   | LabelCons of (ID.idwl * (ID.idwl, 'module_e thunk_type) OH.t )
   | Tuple of ('module_e thunk_type list)
   | List of ('module_e thunk_type list)
-  | Closure of (P.pat list * E.t * 'module_e env_t
-                * ('module_e env_t -> 'module_e env_t)) (* function or constructor *)
+  | ClosureSN of (P.pat list * E.t * 'module_e env_t
+                  * ('module_e env_t -> 'module_e env_t)) (* function or constructor *)
       (* arguemnt-pattern-list, expression, environment *)
+  | Closure of (((P.pat list * E.t * 'module_e env_t
+                  * ('module_e env_t -> 'module_e env_t)) list) * E.aexp list)
   | Primitive of (('module_e thunk_type list -> 'module_e value) * int)
 
-(* and arg_exp = Exp of E.t | Atom of E.aexp *) (* E.make_aexp_exp : (E.aexp -> E.exp) *)
 
 and 'module_e thunk_type = unit -> 'module_e value
 
@@ -79,7 +81,9 @@ let valFalse = simple_cons "False"
 
 let primTable = 
   let table : (string, e_module_type value) H.t = H.create 32 in
-  let err_pref = "Primitive Type error: " in
+  let raise_type_err name msg =
+    failwith (F.sprintf "Primitive argument type error: %s: %s" name msg) in
+
   let bind_prim name prim = H.add table name prim in
 
   let def_eager_num_op2 name i64f floatf =
@@ -92,16 +96,16 @@ let primTable =
                                  begin
                                    match (x, y) with
                                        (SYN.Int (xi, _), SYN.Int (yi, _)) -> 
-                                         (* Printf.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi); *)
+                                         (* F.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi); *)
                                          Literal (SYN.Int ((i64f xi yi), T.implicit_loc))
                                      | (SYN.Int (xi, _), SYN.Float (yf, _)) -> Literal (SYN.Float ((floatf (Int64.to_float xi) yf), T.implicit_loc))
                                      | (SYN.Float (xf, _), SYN.Int (yi, _)) -> Literal (SYN.Float ((floatf xf (Int64.to_float yi)), T.implicit_loc))
                                      | (SYN.Float (xf, _), SYN.Float (yf, _)) -> Literal (SYN.Float ((floatf xf yf), T.implicit_loc))
-                                     | _ -> failwith (err_pref ^ name)
+                                     | _ -> raise_type_err name "Non-number argument found."
                                  end
-                             | _ -> failwith (err_pref ^ name)
+                             | _ -> raise_type_err name "Non-literal arguemnt found."
                          end
-                     | _ -> failwith (err_pref ^ name)), 2))
+                     | _ -> raise_type_err name "Argument count is not 2."), 2))
   in
 
   let _ = (def_eager_num_op2 "+" Int64.add (+.),
@@ -120,17 +124,17 @@ let primTable =
                                    begin
                                      match (x, y) with
                                          (SYN.Int (xi, _), SYN.Int (yi, _)) ->
-                                           (* Printf.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi); *)
+                                           (* F.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi); *)
                                            i64f xi yi
                                        | (SYN.Int (xi, _), SYN.Float (yf, _)) -> floatf (Int64.to_float xi) yf
                                        | (SYN.Float (xf, _), SYN.Int (yi, _)) -> floatf xf (Int64.to_float yi)
                                        | (SYN.Float (xf, _), SYN.Float (yf, _)) -> floatf xf yf
-                                       | _ -> failwith (err_pref ^ name)
+                                       | _ -> raise_type_err name "Non-number argument found."
                                    end
                                  then valTrue else valFalse
-                             | _ -> failwith (err_pref ^ name)
+                             | _ -> raise_type_err name "Non-literal arguemnt found."
                          end
-                     | _ -> failwith (err_pref ^ name)), 2))
+                     | _ -> raise_type_err name "Argument count is not 2."), 2))
   in
 
   let _ = (def_eager_num_op2_bool "<=" (<=) (<=),
@@ -138,18 +142,20 @@ let primTable =
            def_eager_num_op2_bool "==" (==) (==),
            def_eager_num_op2_bool "/=" (<>) (<>)) in
                                        
-  let _ = bind_prim "primError"
+  let prim_primError = "primError" in
+  let _ = bind_prim prim_primError
     (Primitive ((function
                      th :: [] ->
                        begin
                          match th() with
                              Literal (SYN.String m) ->
                                failwith ("error: " ^ (fst m))
-                           | _ -> failwith (err_pref ^ "primError")
+                           | _ -> raise_type_err prim_primError "Non-literal arguemnt found."
                        end
-                   | _ -> failwith (err_pref ^ "primError")), 1)) in
+                   | _ -> raise_type_err prim_primError "Arguemnt not found."), 1)) in
 
-  let _ = bind_prim "print"
+  let prim_print = "print" in
+  let _ = bind_prim prim_print
     (Primitive ((function
                      th :: [] ->
                        begin
@@ -157,9 +163,9 @@ let primTable =
                              Literal (SYN.Int (i, _)) -> print_endline (Int64.to_string i); IO
                            | Literal (SYN.Float (f, _)) -> print_endline (string_of_float f); IO
                            | Literal (SYN.String (m, _)) -> print_endline m; IO
-                           | _ -> failwith (err_pref ^ "print")
+                           | v -> raise_type_err prim_print ("Non-literal arguemnt found. " ^ (Std.dump v))
                        end
-                   | _ -> failwith (err_pref ^ "print")), 1)) in
+                   | _ -> raise_type_err prim_print "Arguemnt not found."), 1)) in
     table
 
 
@@ -188,10 +194,10 @@ let mk_literal lit =
   Literal lit
 
 let mk_simple_closure env pat_list exp =
-  Closure (pat_list, exp, env, (fun x -> x))
+  ClosureSN (pat_list, exp, env, (fun x -> x))
 
 let mk_closure env pat_list exp where_env_fun =
-  Closure (pat_list, exp, env, where_env_fun)
+  ClosureSN (pat_list, exp, env, where_env_fun)
 
 
 let lastErrAExp : E.aexp option ref = ref None
@@ -234,7 +240,7 @@ let arity_list_take l n =
         (0, _) -> (L.rev buf, rest)
       | (_, f::rest) -> take_rec (f::buf) rest (nn - 1)
       | (_, []) -> failwith
-          (Printf.sprintf "apply_closure: Too many arguemnt(s): expects %d argument(s), but is here applied to %d argument(s)"
+          (F.sprintf "apply_closure: Too many arguemnt(s): expects %d argument(s), but is here applied to %d argument(s)"
              (L.length l) n)
   in take_rec [] l n
 
@@ -285,7 +291,7 @@ and bind_pat_with_thunk pat =
   in
     match pat with
         P.PlusP (id, i64, _) ->
-          (fun _ _ -> failwith (Printf.sprintf "Not implemented pattern match: %s" (dump_pattern pat)))
+          (fun _ _ -> failwith (F.sprintf "Not implemented pattern match: %s" (dump_pattern pat)))
 
       | P.VarP (id) ->
           (fun env thunk ->
@@ -373,13 +379,42 @@ and pattern_match_arg_exp local_env pat caller_env evalee =
 
 and apply_closure caller_env closure arg_exp_list =
   match closure with
-      Closure (apat_list, body_exp, env, where_env_fun) ->
+      ClosureSN (apat_list, body_exp, env, where_env_fun) ->
         Stack.push closure applyClosureStack;
         let (loc_env, ac) = (local_env env, L.length arg_exp_list) in
         let (pbind_list, apat_rest) = arity_list_take apat_list ac in
         let _  = L.map2 (fun pat arg_exp -> pattern_match_arg_exp loc_env pat caller_env arg_exp) pbind_list arg_exp_list in
           if apat_rest = [] then eval_exp (where_env_fun loc_env) body_exp
           else mk_closure loc_env apat_rest body_exp where_env_fun
+    | Closure (cld_list, partial_args) ->
+        let arg_exp_list = (L.append partial_args arg_exp_list) in
+        let allresult = (L.fold_left
+                           (fun result_opt (apat_list, body_exp, env, where_env_fun) ->
+                              match result_opt with
+                                  Some r -> result_opt
+                                | None ->
+                                    let (loc_env, ac) = (local_env env, L.length arg_exp_list) in
+                                    let (pbind_list, apat_rest) = arity_list_take apat_list ac in
+                                      if apat_rest = [] then
+                                        if (L.fold_left2
+                                              (fun matchp pat arg_exp ->
+                                                 if matchp then let (matchp, _) = pattern_match_arg_exp loc_env pat caller_env arg_exp in matchp
+                                                 else false)
+                                              true
+                                              pbind_list
+                                              arg_exp_list)
+                                        then Some (eval_exp (where_env_fun loc_env) body_exp)
+                                        else None
+                                      else Some (Closure (cld_list, arg_exp_list)))
+                           None
+                           cld_list)
+        in
+          begin
+            match allresult with
+                None -> failwith "apply_closure: Bug!"
+              | Some r -> r
+          end
+                 
     | Primitive (prim_fun, arity) ->
         let restc = arity - (L.length arg_exp_list) in
         let athunk_list = (L.map (fun aexp -> (make_arg_exp_thunk caller_env aexp)) arg_exp_list) in
@@ -388,9 +423,9 @@ and apply_closure caller_env closure arg_exp_list =
                 0                -> (prim_fun athunk_list)
               | _ when restc > 0 -> Primitive ((fun rest_list -> (* Primitive section *)
                                                   prim_fun (L.append athunk_list rest_list)), restc)
-              | _                -> failwith (Printf.sprintf "Too many argument %d for this primitive" arity)
+              | _                -> failwith (F.sprintf "Too many argument %d for this primitive" arity)
           end
-    | x -> failwith (Printf.sprintf "apply_closure: Not closure value: %s" (Std.dump x))
+    | x -> failwith (F.sprintf "apply_closure: Not closure value: %s" (Std.dump x))
 
 
 (* eval_* : expression から thunk へ *)
@@ -417,16 +452,16 @@ and eval_arg_exp env =
 
     | E.ListE (el) -> List (L.map (fun e -> make_exp_thunk env e) el)
 
-    | x -> failwith (Printf.sprintf "aexp: Not implemented: %s" (dump_aexp x))
+    | x -> failwith (F.sprintf "aexp: Not implemented: %s" (dump_aexp x))
 
 
 and eval_func_exp env =
   function
       E.FfunE aexp ->
-	eval_arg_exp env aexp
+        eval_arg_exp env aexp
 
     | E.FappE (fexp, aexp) -> 
-	apply_closure env (eval_func_exp env fexp) [aexp]
+        apply_closure env (eval_func_exp env fexp) [aexp]
 
     | E.FappEID -> failwith ("BUG: E.FappEID found.")
 
@@ -457,7 +492,7 @@ and eval_exp env =
                (match (eval_exp env pre_e) with
                     Cons(id, []) when id.ID.name = "True" -> eval_exp env then_e
                   | Cons(id, []) when id.ID.name = "False" -> eval_exp env else_e
-                  | x  -> failwith (Printf.sprintf "exp: if: Type error %s" (Std.dump x)))
+                  | x  -> failwith (F.sprintf "exp: if: Type error %s" (Std.dump x)))
            | E.CaseE (exp, []) ->
                Bottom
            | E.CaseE (exp, (CA.Simple (pat, case_exp, [])) :: alt_list) ->
@@ -468,69 +503,86 @@ and eval_exp env =
                  else
                    eval_exp env (E.Top (E.CaseE (exp, alt_list), None))
 
-           | x -> failwith (Printf.sprintf "exp: Not implemented: %s" (dump_exp x)))
+           | x -> failwith (F.sprintf "exp: Not implemented: %s" (dump_exp x)))
 
-and pre_eval_rhs env rhs =
+and expand_rhs env rhs =
   let where_env local_env = function
-      None -> local_env | Some dl -> (decl_list_local_env local_env eval_decl dl) in
+      None -> local_env
+    | Some dl -> (decl_list_local_env local_env eval_decl dl) in
   let (ev_exp, new_local_env) =
     match rhs with
-	D.Rhs (exp, where) -> (exp, (fun le -> where_env le where))
+        D.Rhs (exp, where) -> (exp, (fun le -> where_env le where))
       | D.RhsWithGD (gdrhs_list, where) ->
-	  (L.fold_right
-	     (fun gdrhs else_e ->
-		match gdrhs with
-		    (GD.Guard gde, exp) ->
-		      E.IfE (gde, exp, else_e))
-	     gdrhs_list
-	     (E.FexpE (E.FappE (E.FfunE (E.make_var_exp "error" (env_get_prelude env)), E.LiteralE (SYN.String ("Unmatched pattern", T.implicit_loc))))),
-	   (fun le -> where_env le where))
-				 
-(*       | x -> failwith (Printf.sprintf "rhs: Not implemented: %s" (Std.dump x)) *)
+          (L.fold_right
+             (fun gdrhs else_e ->
+                match gdrhs with
+                    (GD.Guard gde, exp) ->
+                      E.IfE (gde, exp, else_e))
+             gdrhs_list
+             (E.FexpE (E.FappE (E.FfunE (E.make_var_exp "error" (env_get_prelude env)), E.LiteralE (SYN.String ("Unmatched pattern", T.implicit_loc))))),
+           (fun le -> where_env le where))
+                                 
+(*       | x -> failwith (F.sprintf "rhs: Not implemented: %s" (Std.dump x)) *)
   in
     ((fun funlhs ->
-	let _ = match funlhs with
-	    D.FunLV (sym, apat_list) ->
-	      bind_thunk env sym (make_thawed (mk_closure env apat_list ev_exp new_local_env))
-	  | D.Op2Fun (op, (arg1, arg2)) ->
-	      bind_thunk env op (make_thawed (mk_closure env [arg1; arg2] ev_exp new_local_env))
-	  | x -> failwith (Printf.sprintf "funlhs: Not implemented: %s" (Std.dump x))
-	in ()),
-     (fun pat -> let _ = pattern_match env pat (new_local_env env) ev_exp in () ))
+        match funlhs with
+            D.FunLV (sym, apat_list) ->
+              (sym, apat_list, ev_exp, new_local_env)
+          | D.Op2Fun (op, (arg1, arg2)) ->
+              (op, [arg1; arg2], ev_exp, new_local_env)
+          | x -> failwith (F.sprintf "funlhs: Not implemented: %s" (Std.dump x))),
+     (fun pat -> ignore (pattern_match env pat (new_local_env env) ev_exp)))
 
+and pre_eval_rhs env rhs =
+  let (cldfun, bpat) = expand_rhs env rhs in
+    ((fun funlhs -> 
+        let (sym, apat_list, ev_exp, new_local_env) = cldfun funlhs in
+        let _ = bind_thunk env sym (make_thawed (mk_closure env apat_list ev_exp new_local_env)) in () ),
+     bpat)
+         
 and eval_gendecl env _ = ()
 
 and eval_idecl env =
   function
       D.FunDecI (lhs, rhs) ->
-	let (bfun, _) = pre_eval_rhs env rhs in
-	  bfun lhs
+        let (bfun, _) = pre_eval_rhs env rhs in
+          bfun lhs
     | D.BindI (id, rhs) ->
-	let (_, bpat) = pre_eval_rhs env rhs in
-	  bpat (P.VarP id)
+        let (_, bpat) = pre_eval_rhs env rhs in
+          bpat (P.VarP id)
     | D.EmptyI -> ()
 
 and eval_cdecl env =
   function
       D.FunDecC (lhs, rhs) ->
-	let (bfun, _) = pre_eval_rhs env rhs in
-	  bfun lhs
+        let (bfun, _) = pre_eval_rhs env rhs in
+          bfun lhs
     | D.BindC (id, rhs) ->
-	let (_, bpat) = pre_eval_rhs env rhs in
-	  bpat (P.VarP id)
+        let (_, bpat) = pre_eval_rhs env rhs in
+          bpat (P.VarP id)
     | D.GenDeclC gendecl -> eval_gendecl env gendecl
 
 and eval_decl env =
   function
-      D.FunDec (lhs, rhs) ->
-	let (bfun, _) = pre_eval_rhs env rhs in
-	  bfun lhs
+      D.FunDec deflist ->
+        let (sym_opt, revr) = (L.fold_left 
+                                 (fun (sym_opt, revr) (funlhs, rhs) ->
+                                    let (cldfun, _) = expand_rhs env rhs in
+                                    let (sym, apat_list, ev_exp, new_local_env) = cldfun funlhs in
+                                      (Some sym, ((apat_list, ev_exp, env, new_local_env) :: revr)))
+                                 (None, [])
+                                 deflist) in
+          begin
+            match sym_opt with
+                Some sym -> let _ = bind_thunk env sym (make_thawed (Closure ((L.rev revr), []))) in ()
+              | None -> failwith "decl: Bug function def is null list."
+          end
     | D.PatBind (pat, rhs) ->
-	let (_, bpat) = pre_eval_rhs env rhs in
-	  bpat pat
+        let (_, bpat) = pre_eval_rhs env rhs in
+          bpat pat
     | D.GenDecl gendecl -> eval_gendecl env gendecl
 
-(*     | x -> failwith (Printf.sprintf "decl: Not implemented: %s" (dump_decl x)) *)
+(*     | x -> failwith (F.sprintf "decl: Not implemented: %s" (dump_decl x)) *)
 
 let (lastEvalDecl : E.t D.decl option ref) = ref None
 
@@ -555,15 +607,15 @@ let eval_module env =
   function
 (*       (x, y, (z, topdecl_list)) -> (x, y, (z, List.map (eval_topdecl env) topdecl_list)) *)
       (x, y, (z, topdecl_list)) ->
-	let _ = List.map (eval_topdecl env) topdecl_list in ()
+        let _ = List.map (eval_topdecl env) topdecl_list in ()
 
 (* eval_program : 
    全ての module を thunk tree に変換した後で
    toplevel環境 main シンボルに束縛されている thunk を展開 *)
 let eval_program env program =
   let _ = program.pdata_assoc.OA.iter (fun name pd ->
-					 if name = "Prelude" then () else
-					   eval_module env pd.PD.syntax) in
+                                         if name = "Prelude" then () else
+                                           eval_module env pd.PD.syntax) in
   let main_pd = program.pdata_assoc.OA.find "Main" in
     eval_arg_exp env (E.VarE (ID.make_id_core "main" (ID.Qual main_pd.PD.local_module.PD.mn_ref) T.implicit_loc))
 
