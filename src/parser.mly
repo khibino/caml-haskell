@@ -21,14 +21,22 @@
   module E = S.Expression
 
   let debug_out_stream = stderr
+  let debugFlag = ref false
+
+  let debug_print =
+    if !debugFlag then
+      (fun str ->
+         F.fprintf debug_out_stream "parser: %s\n" str; flush debug_out_stream)
+    else
+      (fun _ -> ())
+
+  let debug_reduce to_ from =
+    debug_print (F.sprintf "parser: %s <- %s" to_ from)
 
   let parse_error msg =
-    F.fprintf debug_out_stream "Parser.parse_error is called!!\n"; flush debug_out_stream;
+    debug_print "Parser.parse_error is called!!";
     ParseErr.parse_error_flag := true;
     ()
-
-  let debug_print from to_ =
-    F.fprintf debug_out_stream "parser: %s <- %s\n" from to_; flush debug_out_stream
 
 %}
 
@@ -210,7 +218,7 @@ topdecl_list:
 ;
 
 topdecl_semi_list:
-  topdecl SP_SEMI topdecl_semi_list  { $1 :: $3 }
+  topdecl SP_SEMI topdecl_semi_list  { (* $1 :: $3 *) D.poly_fundec_cons $1 $3 D.defpair_from_topdecl D.topdecl_cons }
 | topdecl  { [$1] }
 ;
 
@@ -265,7 +273,7 @@ decl_list:
 ;
 
 semi_decl_list:
-  decl SP_SEMI semi_decl_list { $1 :: $3 }
+  decl SP_SEMI semi_decl_list { (* $1 :: $3 *) D.poly_fundec_cons $1 $3 D.defpair_from_decl D.decl_cons }
 | decl  { [$1] }
 ;
 
@@ -282,13 +290,13 @@ cdecl_list:
 ;
 
 semi_cdecl_list:
-  cdecl SP_SEMI semi_cdecl_list { $1 :: $3 }
+  cdecl SP_SEMI semi_cdecl_list { (* $1 :: $3 *) D.poly_fundec_cons $1 $3 D.defpair_from_c D.c_cons }
 | cdecl  { [$1] }
 ;
 
 cdecl:
   gendecl  { D.GenDeclC ($1) }
-| funlhs rhs  { D.FunDecC ($1, $2) }
+| funlhs rhs  { D.FunDecC [($1, $2)] }
 | var rhs  { D.BindC ($1, $2) }
 ;
 
@@ -298,12 +306,12 @@ idecl_list:
 ;
 
 semi_idecl_list:
-  idecl SP_SEMI semi_idecl_list  { $1 :: $3 }
+  idecl SP_SEMI semi_idecl_list  { (* $1 :: $3 *) D.poly_fundec_cons $1 $3 D.defpair_from_i D.i_cons }
 | idecl  { [$1] }
 ;
 
 idecl:
-  funlhs rhs  { D.FunDecI ($1, $2) }
+  funlhs rhs  { D.FunDecI [($1, $2)] }
 | var rhs  { D.BindI ($1, $2) }
 |   { D.EmptyI }                /*(empty)*/
 ;

@@ -213,6 +213,12 @@ struct
   let unloc id = { id with loc = T.implicit_loc }
   let eq aa bb = (unloc aa) = (unloc bb)
 
+  let name_str id =
+    match id.qual with
+        Sp _ -> id.name
+      | Qual { contents = Some qname } -> qname ^ "." ^ id.name
+      | Qual { contents = None }       -> "<undef>." ^ id.name
+
   let make_id_with_mod data =
     let iwm = (fst data) in make_id iwm.T.modid iwm.T.id (snd data)
 
@@ -635,14 +641,14 @@ struct
 
   (* Instance *)
   and 'exp i =
-      FunDecI of ('exp funlhs * 'exp rhs)
+      FunDecI of (('exp funlhs * 'exp rhs) list)
     | BindI of (ID.idwl * 'exp rhs)
     | EmptyI
 
   (* Class *)
   and 'exp c =
       GenDeclC of gendecl
-    | FunDecC of ('exp funlhs * 'exp rhs)
+    | FunDecC of (('exp funlhs * 'exp rhs) list)
     | BindC of (ID.idwl * 'exp rhs)
 
   and 'exp rhs =
@@ -676,29 +682,57 @@ struct
     let _ = ID.class_regist name_id { cname = name_id.ID.name; type_var = typev_id.ID.name; ctxs = TClassCtx [] } in
       Class (ctx, name_id, typev_id, def)
 
-  let lhs_from_decl =
+  let defpair_from_topdecl =
     function
-        FunDec ((lhs, rhs) :: _) -> Some lhs
+        Decl (FunDec (dp :: _)) -> Some dp
       | _ -> None
 
-  let merge_decl decl pre_decl =
+  let topdecl_cons decl pre_decl =
     match (decl, pre_decl) with
-        (FunDec declt, FunDec pre_declt) -> FunDec ((L.hd declt) :: pre_declt)
+        (Decl (FunDec [defpair]), Decl (FunDec pre_decl_list)) -> Decl (FunDec (defpair :: pre_decl_list))
       | _ -> assert false
 
-  let mdecl_merge ndecl decl_list get_lhs merge =
+  let defpair_from_decl =
+    function
+        FunDec (dp :: _) -> Some dp
+      | _ -> None
+
+  let decl_cons decl pre_decl =
+    match (decl, pre_decl) with
+        (FunDec [defpair], FunDec pre_decl_list) -> FunDec (defpair :: pre_decl_list)
+      | _ -> assert false
+
+  let defpair_from_i =
+    function
+        FunDecI (dp :: _) -> Some dp
+      | _ -> None
+
+  let i_cons decl pre_decl =
+    match (decl, pre_decl) with
+        (FunDecI [defpair], FunDecI pre_decl_list) -> FunDecI (defpair :: pre_decl_list)
+      | _ -> assert false
+
+  let defpair_from_c =
+    function
+        FunDecC (dp :: _) -> Some dp
+      | _ -> None
+
+  let c_cons decl pre_decl =
+    match (decl, pre_decl) with
+        (FunDecC [defpair], FunDecC pre_decl_list) -> FunDecC (defpair :: pre_decl_list)
+      | _ -> assert false
+
+  let poly_fundec_cons ndecl decl_list get_defpair merge =
     match decl_list with
         [] -> [ndecl]
       | pre_decl :: tail ->
           begin
-            match ((get_lhs ndecl), (get_lhs pre_decl)) with
-                (Some (FunLV (id, _)), Some (FunLV (car_id, _))) when
-                  id.ID.name = car_id.ID.name &&
-                  id.ID.qual == car_id.ID.qual
-                  -> (merge_decl ndecl pre_decl) :: tail
-              | _ -> ndecl :: decl_list
+            match ((get_defpair ndecl), (get_defpair pre_decl)) with
+                (Some (FunLV (id, _), _), Some (FunLV (car_id, _), _))
+                  when ID.eq id car_id
+                    -> (merge ndecl pre_decl) :: tail
+              | _   -> ndecl :: decl_list
           end
-                  
 
 (*
   let fundec_cons 
@@ -965,19 +999,18 @@ struct
 
   and op2_scan_decl pdata =
     function
-        (* D.FunDec (lhs, rhs) -> D.FunDec ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs)) *)
         D.FunDec deflist -> D.FunDec (L.map (fun (lhs, rhs) -> (op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs)) deflist)
       | D.PatBind (pat, rhs) -> D.PatBind ((op2_scan_pat pdata pat), (op2_scan_rhs pdata rhs))
       | x -> x
 
   and op2_scan_cdecl pdata tcls =
     function
-        D.FunDecC (lhs, rhs) -> D.FunDecC ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs))
+        D.FunDecC deflist -> D.FunDecC (L.map (fun (lhs, rhs) -> (op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs)) deflist)
       | x -> x
 
   and op2_scan_idecl pdata tcls =
     function
-        D.FunDecI (lhs, rhs) -> D.FunDecI ((op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs))
+        D.FunDecI deflist -> D.FunDecI (L.map (fun (lhs, rhs) -> (op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs)) deflist)
       | x -> x
 
   and op2_scan_topdecl pdata =
