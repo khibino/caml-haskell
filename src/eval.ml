@@ -563,13 +563,6 @@ and expand_rhs env rhs =
           | x -> failwith (F.sprintf "funlhs: Not implemented: %s" (Std.dump x))),
      (fun pat -> ignore (pattern_match env pat (new_local_env env) ev_exp)))
 
-and pre_eval_rhs env rhs =
-  let (cldfun, bpat) = expand_rhs env rhs in
-    ((fun funlhs -> 
-        let (sym, apat_list, ev_exp, new_local_env) = cldfun funlhs in
-        let _ = bind_thunk env sym (make_thawed (mk_single_closure env apat_list ev_exp new_local_env)) in () ),
-     bpat)
-
 and eval_func_def env deflist =
   let (sym_opt, revr) = (L.fold_left 
                            (fun (sym_opt, revr) (funlhs, rhs) ->
@@ -643,7 +636,7 @@ let eval_module env =
    toplevel環境 main シンボルに束縛されている thunk を展開 *)
 let eval_program env program =
   let _ = program.pdata_assoc.OA.iter (fun name pd ->
-                                         if name = "Prelude" then () else
+                                         (* if name = "Prelude" then () else *)
                                            eval_module env pd.PD.syntax) in
   let main_pd = program.pdata_assoc.OA.find "Main" in
     eval_arg_exp env (E.VarE (ID.make_id_core "main" (ID.Qual main_pd.PD.local_module.PD.mn_ref) T.implicit_loc))
