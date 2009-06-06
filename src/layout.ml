@@ -147,8 +147,8 @@ let try_parse token_data lexbuf =
     let _ = (Stack.push pair token_stack,
              debug_out (Printf.sprintf "token:%s" (L0.to_string_with_loc tok))) in
       match tok with
-          P.T_CONID (n, loc) when ID.class_p (ID.make_local_id n loc)  -> P.T_CLSID (n, loc)
-        | P.T_MOD_CONID (iwm, loc) when ID.class_p (ID.make_id iwm.T.modid iwm.T.id loc) -> P.T_MOD_CLSID (iwm, loc)
+          P.T_CONID ((n, _) as wl) when ID.class_p (ID.make_local_id n)  -> P.T_CLSID wl
+        | P.T_MOD_CONID ((iwm, loc) as wl) when ID.class_p (ID.make_id_with_mod iwm) -> P.T_MOD_CLSID wl
         | _ -> tok
   in
 

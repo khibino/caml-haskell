@@ -181,6 +181,7 @@ struct
       Sp of sp_con
     | Qual of string option ref
 
+(*
   type 'loc id = {
     name : string;
     qual : qualifier;
@@ -188,30 +189,42 @@ struct
   }
 
   type idwl = T.loc id
+*)
 
-  let make_id_core n q loc = {
-    name = n;
-    qual = q;
-    loc = loc
+  type id = {
+    name : string;
+    qual : qualifier;
   }
 
-  let make_local_id n loc = 
-    make_id_core n (Qual (PBuf.find_local_module ()).PBuf.mns) loc
+  type idwl = (id * T.loc)
 
-  let make_id modid n loc = 
-    make_id_core n (Qual (PBuf.find_module modid).PBuf.mns) loc
+  let make_id_core n q = {
+    name = n;
+    qual = q;
+  }
 
-  let sp_colon     loc = make_id_core ":" (Sp Colon) loc
-  let sp_unit      loc = make_id_core "()" (Sp Unit) loc
-  let sp_null_list loc = make_id_core "[]" (Sp NullList) loc
-  let sp_tuple   i loc =
+  let make_local_id n = 
+    make_id_core n (Qual (PBuf.find_local_module ()).PBuf.mns)
+
+  let make_id modid n = 
+    make_id_core n (Qual (PBuf.find_module modid).PBuf.mns)
+
+  let idwl id loc = (id, loc)
+
+  let make_local_idwl n loc = idwl (make_local_id n) loc
+
+  let idwul id = idwl id T.implicit_loc
+
+  let sp_colon     = make_id_core ":" (Sp Colon)
+  let sp_unit      = make_id_core "()" (Sp Unit)
+  let sp_null_list = make_id_core "[]" (Sp NullList)
+  let sp_tuple   i =
     make_id_core
       ("(" ^ (Array.fold_left (^) "" (Array.make (i-1) ",")) ^ ")")
       (Sp (Tuple i))
-      loc
 
-  let unloc id = { id with loc = T.implicit_loc }
-  let eq aa bb = (unloc aa) = (unloc bb)
+  let unloc idwl = fst idwl
+  let eq_idwl aa bb = (unloc aa) = (unloc bb)
 
   let name_str id =
     match id.qual with
@@ -219,8 +232,9 @@ struct
       | Qual { contents = Some qname } -> qname ^ "." ^ id.name
       | Qual { contents = None }       -> "<undef>." ^ id.name
 
-  let make_id_with_mod data =
-    let iwm = (fst data) in make_id iwm.T.modid iwm.T.id (snd data)
+  let make_id_with_mod iwm = make_id iwm.T.modid iwm.T.id
+
+  let make_idwl_with_mod (iwm, loc) = idwl (make_id_with_mod iwm) loc
 
   let get_module_buffer id =
     match id.qual with
@@ -253,7 +267,7 @@ struct
     (get_module_buffer id).PBuf.op_fun_assoc.OA.find id.name
 
   let op_prelude_def () =
-    as_op_set_fixity (sp_colon T.implicit_loc) ((InfixRight, 5), None)
+    as_op_set_fixity sp_colon ((InfixRight, 5), None)
 
 end
 
@@ -383,7 +397,7 @@ struct
           else
             failwith ("operator " ^ op ^" not found in module " ^ m.mname)
 
-  let create_parsed_data pbuf ((local_module_id, _, _) as syntax_t) =
+  let create_parsed_data pbuf (((local_module_id, _), _, _) as syntax_t) =
     let new_mod_assoc = OA.create
       (fun _ -> "BUG: convert_local_module")
       (fun k m -> module_to_string m)
@@ -502,9 +516,9 @@ rpati   ->      pati+1 qconop(r,i) (rpati | pati+1)
   let rec scan_op2pat min_i pdata pat_fun list =
     match list with
         PatF (pat, Op2End) -> pat_fun pat
-      | PatF (patAA, Op2F (op_aa, (PatF (patBB, Op2End)))) ->
-          ConOp2P (op_aa, pat_fun patAA, pat_fun patBB)
-      | PatF (patAA, Op2F (op_aa, ((PatF (patBB, Op2F (op_bb, rest))) as cdr))) ->
+      | PatF (patAA, Op2F (op_aa_wl, (PatF (patBB, Op2End)))) ->
+          ConOp2P (op_aa_wl, pat_fun patAA, pat_fun patBB)
+      | PatF (patAA, Op2F ((op_aa, _) as op_aa_wl, ((PatF (patBB, Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
           (let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
            let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
              match (aa_fixity, bb_fixity) with
@@ -513,13 +527,13 @@ rpati   ->      pati+1 qconop(r,i) (rpati | pati+1)
                | (_, (_, bb_i)) when bb_i < min_i ->
                    failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str bb_fixity))
                | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-                   scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa, pat_fun patAA, pat_fun patBB), Op2F (op_bb, rest)))
+                   scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa_wl, pat_fun patAA, pat_fun patBB), Op2F (op_bb_wl, rest)))
                | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
-                   scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa, pat_fun patAA, pat_fun patBB), Op2F (op_bb, rest)))
+                   scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa_wl, pat_fun patAA, pat_fun patBB), Op2F (op_bb_wl, rest)))
                | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-                   ConOp2P (op_aa, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
+                   ConOp2P (op_aa_wl, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
                | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
-                   ConOp2P (op_aa, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
+                   ConOp2P (op_aa_wl, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
                | _ ->
                    failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
                                (fixity_str aa_fixity)
@@ -665,9 +679,9 @@ struct
   let op2lhs_right lhsd = snd (snd lhsd)
 
   let op2lhs lhsd =
-    let op = op2lhs_op lhsd in
+    let (op, _) as op_wl = op2lhs_op lhsd in
     let _ = ID.fun_regist op true in
-      Op2Fun (op, (P.Pat1 (op2lhs_left lhsd), P.Pat1 (op2lhs_right lhsd)))
+      Op2Fun (op_wl, (P.Pat1 (op2lhs_left lhsd), P.Pat1 (op2lhs_right lhsd)))
 
   type 'exp top =
       Type of (Type.typ * Type.typ)
@@ -678,9 +692,9 @@ struct
     | Default of Type.typ list
     | Decl of 'exp decl
 
-  let mk_class ctx name_id typev_id def =
+  let mk_class ctx ((name_id, _) as name_id_wl) ((typev_id, _) as typev_id_wl) def =
     let _ = ID.class_regist name_id { cname = name_id.ID.name; type_var = typev_id.ID.name; ctxs = TClassCtx [] } in
-      Class (ctx, name_id, typev_id, def)
+      Class (ctx, name_id_wl, typev_id_wl, def)
 
   let defpair_from_topdecl =
     function
@@ -728,8 +742,8 @@ struct
       | pre_decl :: tail ->
           begin
             match ((get_defpair ndecl), (get_defpair pre_decl)) with
-                (Some (FunLV (id, _), _), Some (FunLV (car_id, _), _))
-                  when ID.eq id car_id
+                (Some (FunLV ((id, _), _), _), Some (FunLV ((car_id, _), _), _))
+                  when id = car_id
                     -> (merge ndecl pre_decl) :: tail
               | _   -> ndecl :: decl_list
           end
@@ -843,7 +857,7 @@ struct
     in cons_aexp_list cons_fexp []
 
   let make_var_exp name pd =
-    VarE (ID.make_id_core name (ID.Qual pd.PD.mn_ref) T.implicit_loc)
+    VarE (ID.idwul (ID.make_id_core name (ID.Qual pd.PD.mn_ref)))
 
 end
 
@@ -865,11 +879,11 @@ struct
   let fixity_scan_gendecl =
     function
         (D.Fixity (fix, id_list), tcls) ->
-          let _ = List.map (fun id -> ID.as_op_set_fixity id (fix, tcls)) id_list in ()
+          let _ = List.map (fun (id, _) -> ID.as_op_set_fixity id (fix, tcls)) id_list in ()
       | (D.TypeSig (id_list, _, _), None) ->
           ()
       | (D.TypeSig (id_list, _, _), Some tcls) ->
-          let _ = List.map (fun id -> ID.as_op_set_typesig id tcls) id_list in ()
+          let _ = List.map (fun (id, _) -> ID.as_op_set_typesig id tcls) id_list in ()
       | _ -> ()
 
   let fixity_scan_decl =
@@ -885,7 +899,7 @@ struct
   let fixity_scan_topdecl =
     function 
         D.Decl d -> fixity_scan_decl d
-      | D.Class (ctx, cls, _, cdecl_list) ->
+      | D.Class (ctx, (cls, _), _, cdecl_list) ->
           let _ = List.map (fun cdecl -> fixity_scan_cdecl (ID.class_find cls) cdecl) cdecl_list in
             ()
       | _ -> ()
@@ -913,19 +927,19 @@ struct
         E.ExpF (exp, E.Op2End) -> scan_exp10 pdata exp
       | E.ExpF (expAA, E.Op2F (op_aa, (E.ExpF (expBB, E.Op2End)))) ->
           E.VarOp2E (op_aa, scan_exp10 pdata expAA, scan_exp10 pdata expBB)
-      | E.ExpF (expAA, E.Op2F (op_aa, ((E.ExpF (expBB, E.Op2F (op_bb, rest))) as cdr))) ->
+      | E.ExpF (expAA, E.Op2F ((op_aa, _) as op_aa_wl, ((E.ExpF (expBB, E.Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
           (let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
            let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
              (* Printf.printf "(%s, %d) vs (%s, %d)\n" op_aa.ID.name (snd aa_fixity) op_bb.ID.name (snd bb_fixity); *)
              match (aa_fixity, bb_fixity) with
                  ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-                   scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa, expAA, expBB), E.Op2F (op_bb, rest)))
+                   scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa_wl, expAA, expBB), E.Op2F (op_bb_wl, rest)))
                | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
-                   scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa, expAA, expBB), E.Op2F (op_bb, rest)))
+                   scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa_wl, expAA, expBB), E.Op2F (op_bb_wl, rest)))
                | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-                   E.VarOp2E (op_aa, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
+                   E.VarOp2E (op_aa_wl, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
                | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
-                   E.VarOp2E (op_aa, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
+                   E.VarOp2E (op_aa_wl, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
                | _ ->
                    failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
                                (fixity_str aa_fixity)
@@ -1016,12 +1030,12 @@ struct
   and op2_scan_topdecl pdata =
     function 
         D.Decl d -> D.Decl (op2_scan_decl pdata d)
-      | D.Class (ctx, cls, x, cdecl_list) ->
+      | D.Class (ctx, ((cls, _) as cls_wl), x, cdecl_list) ->
           let new_cdecl_list = List.map (fun cdecl -> op2_scan_cdecl pdata (ID.class_find cls) cdecl) cdecl_list in
-            D.Class (ctx, cls, x, new_cdecl_list)
-      | D.Instance (ctx, cls, x, idecl_list) ->
+            D.Class (ctx, cls_wl, x, new_cdecl_list)
+      | D.Instance (ctx, ((cls, _) as cls_wl), x, idecl_list) ->
           let new_idecl_list = List.map (fun idecl -> op2_scan_idecl pdata (ID.class_find cls) idecl) idecl_list in
-            D.Instance (ctx, cls, x, new_idecl_list)
+            D.Instance (ctx, cls_wl, x, new_idecl_list)
       | x -> x
 
   and op2_scan_module pdata =

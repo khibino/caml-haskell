@@ -56,8 +56,8 @@ and 'module_e value =
   | Bottom
   | IO
   | Literal of T.loc SYN.literal
-  | Cons of (ID.idwl * ('module_e thunk_type list))
-  | LabelCons of (ID.idwl * (ID.idwl, 'module_e thunk_type) OH.t )
+  | Cons of (ID.id * ('module_e thunk_type list))
+  | LabelCons of (ID.id * (ID.id, 'module_e thunk_type) OH.t )
   | Tuple of ('module_e thunk_type list)
   | List of ('module_e thunk_type list)
   | Closure of ('module_e closure * int * E.aexp list)
@@ -73,7 +73,7 @@ and 'module_e pre_value =
 
 (* あるスコープでの環境 *)
 and 'module_e eval_buffer = {
-  sym_tab : (ID.idwl, 'module_e thunk_type) H.t;
+  sym_tab : (ID.id, 'module_e thunk_type) H.t;
   program : 'module_e program_buffer;
 }
 
@@ -81,7 +81,7 @@ and 'module_e env_t = 'module_e eval_buffer list
 
 
 let gPrelude = ref (Some "Prelude")
-let simple_cons name = Cons (ID.make_id_core name (ID.Qual gPrelude) T.implicit_loc, [])
+let simple_cons name = Cons (ID.make_id_core name (ID.Qual gPrelude), [])
 
 let valTrue  = simple_cons "True"
 let valFalse = simple_cons "False"
@@ -273,10 +273,10 @@ let h_find err_fun =
 let eval_id env id =
   h_find
     (fun () -> failwith (F.sprintf "eval_id: %s not found." (ID.name_str id)))
-    (env_top_symtab env) (ID.unloc id)
+    (env_top_symtab env) id
 
 let bind_thunk env id thunk =
-  let _ = H.add (env_top_symtab env) (ID.unloc id) thunk in
+  let _ = H.add (env_top_symtab env) id thunk in
     thunk
 
 let thunk_value thunk =
@@ -321,35 +321,35 @@ and bind_pat_with_thunk pat =
         P.PlusP (id, i64, _) ->
           (fun _ _ -> failwith (F.sprintf "Not implemented pattern match: %s" (dump_pattern pat)))
 
-      | P.VarP (id) ->
+      | P.VarP (id, _) ->
           (fun env thunk ->
              let _ = bind_thunk env id thunk in (true, [thunk]))
 
-      | P.AsP (id, pat) ->
+      | P.AsP ((id, _), pat) ->
           (fun env thunk ->
              let (_, (matchp, tlist)) = (bind_thunk env id thunk,
                                          bind_pat_with_thunk pat env thunk)
              in (matchp, thunk :: tlist))
 
-      | P.ConP (id, pat_list) ->
+      | P.ConP ((id, _), pat_list) ->
           (fun env thunk ->
              let value = thunk ()
                (* コンストラクタにマッチする値かどうかを知るには
                   評価する必要がある *)
              in 
                match value with
-                   Cons (cid, args) when (ID.eq cid id)
+                   Cons (cid, args) when cid = id
                      -> sub_patterns_match env pat_list args
                  | _ -> (false, [thunk]))
 
-      | P.LabelP (id, fpat_list) ->
+      | P.LabelP ((id, _), fpat_list) ->
           (fun env thunk ->
              let value = thunk () in
                match value with
-                   LabelCons (cid, lmap) when (ID.eq cid id) ->
+                   LabelCons (cid, lmap) when cid = id ->
                      L.fold_left
-                       (fun (matchp_sum, tlist_sum) (label, pat) ->
-                          let (matchp, tlist) = bind_pat_with_thunk pat env (OH.find lmap (ID.unloc label)) in
+                       (fun (matchp_sum, tlist_sum) ((label, _), pat) ->
+                          let (matchp, tlist) = bind_pat_with_thunk pat env (OH.find lmap label) in
                             (matchp_sum & matchp, L.append tlist_sum tlist))
                        (true, [])
                        fpat_list
@@ -459,7 +459,7 @@ and apply_closure caller_env closure arg =
 (* eval_* : expression から thunk へ *)
 and eval_arg_exp env =
   function
-      E.VarE (id) ->
+      E.VarE ((id, _)) ->
         begin
           if H.mem primTable id.ID.name then
             H.find primTable id.ID.name
@@ -469,7 +469,7 @@ and eval_arg_exp env =
               thunk ()
         end
 
-    | E.ConsE (id) ->
+    | E.ConsE ((id, _)) ->
         let v = Cons (id, []) in v
          
     | E.LiteralE (lit) -> Literal lit
@@ -556,9 +556,9 @@ and expand_rhs env rhs =
   in
     ((fun funlhs ->
         match funlhs with
-            D.FunLV (sym, apat_list) ->
+            D.FunLV ((sym, _), apat_list) ->
               (sym, apat_list, ev_exp, new_local_env)
-          | D.Op2Fun (op, (arg1, arg2)) ->
+          | D.Op2Fun ((op, _), (arg1, arg2)) ->
               (op, [arg1; arg2], ev_exp, new_local_env)
           | x -> failwith (F.sprintf "funlhs: Not implemented: %s" (Std.dump x))),
      (fun pat -> ignore (pattern_match env pat (new_local_env env) ev_exp)))
@@ -638,8 +638,7 @@ let eval_program env program =
   let _ = program.pdata_assoc.OA.iter (fun name pd ->
                                          (* if name = "Prelude" then () else *)
                                            eval_module env pd.PD.syntax) in
-  let main_pd = program.pdata_assoc.OA.find "Main" in
-    eval_arg_exp env (E.VarE (ID.make_id_core "main" (ID.Qual main_pd.PD.local_module.PD.mn_ref) T.implicit_loc))
+    eval_arg_exp env (E.VarE (ID.idwl (ID.make_id "Main" "main") T.implicit_loc))
 
 
 (*  *)

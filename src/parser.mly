@@ -77,7 +77,7 @@
 %token  <Token.loc>  EOF
 
 %start  e_module
-%type <(Token.loc Syntax.Identifier.id * Syntax.Module.export list * (Syntax.Module.impdecl list * Syntax.Expression.t Syntax.Decl.top list))> e_module
+%type <((Syntax.Identifier.id * Token.loc) * Syntax.Module.export list * (Syntax.Module.impdecl list * Syntax.Expression.t Syntax.Decl.top list))> e_module
 /*  type e_module_type = (T.loc I.id * M.export list * (M.impdecl list * E.t D.top list)) */
 
 %start  exp
@@ -92,8 +92,8 @@ e_module:
 module_top:
   K_MODULE modid export_list K_WHERE body { ($2, $3, $5) }
 | K_MODULE modid K_WHERE body         { ($2, [], $4) }
-| body { (I.make_local_id "Main" TK.implicit_loc,
-          [M.EVar (I.make_local_id "main" TK.implicit_loc)],
+| body { (I.idwul (I.make_local_id "Main"),
+          [M.EVar (I.idwul (I.make_local_id "main"))],
           $1) }
 ;
 
@@ -508,7 +508,7 @@ tyvar_comma_list:
 */
 
 funlhs:
-  var apat_list  { I.fun_regist $1 true; D.FunLV($1, $2) }
+  var apat_list  { I.fun_regist (I.unloc $1) true; D.FunLV($1, $2) }
 | op2_pat_pair  { D.op2lhs $1 }
 | SP_LEFT_PAREN funlhs SP_RIGHT_PAREN apat_list  { D.NestDec ($2, $4) }
 ;
@@ -734,7 +734,7 @@ stmt:
 ;
 
 fbind:
-  qvar KS_EQ exp { (I.unloc $1, $3) }
+  qvar KS_EQ exp { ($1, $3) }
 ;
 
 pat:
@@ -842,9 +842,9 @@ fpat:
 ;
 
 gcon:
-  SP_LEFT_PAREN SP_RIGHT_PAREN  { I.sp_unit $1 }
-| SP_LEFT_BRACKET SP_RIGHT_BRACKET  { I.sp_null_list $1 }
-| SP_LEFT_PAREN comma_list SP_RIGHT_PAREN  { I.sp_tuple $2 $1 }
+  SP_LEFT_PAREN SP_RIGHT_PAREN  { I.idwl I.sp_unit $1 }
+| SP_LEFT_BRACKET SP_RIGHT_BRACKET  { I.idwl I.sp_null_list $1 }
+| SP_LEFT_PAREN comma_list SP_RIGHT_PAREN  { I.idwl (I.sp_tuple $2) $1 }
 | qcon  { $1 }
 ;
 
@@ -925,85 +925,85 @@ qop:
 
 
 gconsym:
-  KS_COLON  { I.sp_colon $1 }
+  KS_COLON  { I.idwl I.sp_colon $1 }
 | qconsym   { $1 }
 ;
 
 qvarid:
-  T_MOD_VARID   { I.make_id_with_mod $1 }
+  T_MOD_VARID   { I.make_idwl_with_mod $1 }
 | varid         { $1 }
 ;
 
 qconid:
-  T_MOD_CONID   { I.make_id_with_mod $1 }
+  T_MOD_CONID   { I.make_idwl_with_mod $1 }
 | conid         { $1 }
 ;
 
 qvarsym:
-  T_MOD_VARSYM  { I.make_id_with_mod $1 }
+  T_MOD_VARSYM  { I.make_idwl_with_mod $1 }
 | varsym        { $1 }
 ;
 
 qconsym:
-  T_MOD_CONSYM  { I.make_id_with_mod $1 }
+  T_MOD_CONSYM  { I.make_idwl_with_mod $1 }
 | consym        { $1 }
 ;
 
 varid:
-  T_VARID  { I.make_local_id (fst $1) (snd $1) }
+  T_VARID  { I.make_local_idwl (fst $1) (snd $1) }
 | k_as         { $1 }
 | k_qualified  { $1 }
 | k_hiding     { $1 }
 ;
 
 k_as:
-  K_AS   { I.make_local_id "as" $1 }
+  K_AS   { I.make_local_idwl "as" $1 }
 ;
 
 k_qualified:
-  K_QUALIFIED   { I.make_local_id "qulified" $1 }
+  K_QUALIFIED   { I.make_local_idwl "qulified" $1 }
 ;
 
 k_hiding:
-  K_HIDING   { I.make_local_id "hiding" $1 }
+  K_HIDING   { I.make_local_idwl "hiding" $1 }
 ;
 
 qtycls:
   /* qconid  { $1 } */  /*(qualified type classes)*/
-  T_MOD_CLSID   { I.make_id_with_mod $1 }
+  T_MOD_CLSID   { I.make_idwl_with_mod $1 }
 | tycls         { $1 }
 ;
 
 tycls:
   conid  { $1 }         /*(type classes)*/
-| T_CLSID  { I.make_local_id (fst $1) (snd $1) }
+| T_CLSID  { I.make_local_idwl (fst $1) (snd $1) }
 ;
 
 conid:
-  T_CONID  { I.make_local_id (fst $1) (snd $1) }
+  T_CONID  { I.make_local_idwl (fst $1) (snd $1) }
 ;
 
 varsym:
-  T_VARSYM  { I.make_local_id (fst $1) (snd $1) }
+  T_VARSYM  { I.make_local_idwl (fst $1) (snd $1) }
 | ks_plus    { $1 }
 | ks_minus   { $1 }
 | ks_exclam  { $1 }
 ;
 
 ks_plus:
-  KS_PLUS   { I.make_local_id "+" $1 }
+  KS_PLUS   { I.make_local_idwl "+" $1 }
 ;
 
 ks_minus:
-  KS_MINUS  { I.make_local_id "-" $1 }
+  KS_MINUS  { I.make_local_idwl "-" $1 }
 ;
 
 ks_exclam:
-  KS_EXCLAM  { I.make_local_id "!" $1 }
+  KS_EXCLAM  { I.make_local_idwl "!" $1 }
 ;
 
 consym:
-  T_CONSYM  { I.make_local_id (fst $1) (snd $1) }
+  T_CONSYM  { I.make_local_idwl (fst $1) (snd $1) }
 ;
 
 literal:
