@@ -85,9 +85,10 @@ struct
 
   type module_buffer = {
     mns : MN.t;
+
     op_fixity_assoc : (string, (fixity * tclass option)) OA.t;
-    
     op_typesig_assoc : (string, tclass) OA.t;
+
     op_fun_assoc : (string, bool) OA.t;
     tclass_assoc : (string, tclass) OA.t;
 
