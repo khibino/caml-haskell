@@ -7,7 +7,7 @@ ocaml_extra_load_path = $(shell ocamlfind query -format "-I %d -ccopt -L%d" extl
 
 scratch_sources = \
 	util.ml \
-	onceAssoc.ml orderedHash.ml \
+	saHashtbl.ml orderedHash.ml \
 	token.ml \
 	syntax.ml \
 	parseErr.ml \

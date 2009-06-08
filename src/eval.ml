@@ -6,7 +6,7 @@ module H = Hashtbl
 module F = Printf
 
 module OH = OrderedHash
-module OA = OnceAssoc
+module SAH = SaHashtbl
 module T = Token
 module LO = Layout
 module SYN = Syntax
@@ -25,17 +25,17 @@ type e_module_type = (ID.idwl * M.export list * (M.impdecl list * E.t D.top list
 
 (* プログラム全体 - プログラムはモジュールの集合 *)
 type 'module_e program_buffer = {
-  pdata_assoc : (string, 'module_e PD.t) OA.t;
+  pdata_assoc : (string, 'module_e PD.t) SAH.t;
 }
 
 let lastLoadProgram : e_module_type program_buffer option ref = ref None
 
 let load_program pdata_queue =
-  let pa = OA.create
+  let pa = SAH.create
     (fun x -> "Already loaded module: " ^ x)
     (fun k pd -> pd.PD.local_module.PD.mname)
   in
-  let _ = Q.iter (fun pdata -> pa.OA.add pdata.PD.local_module.PD.mname pdata) pdata_queue in
+  let _ = Q.iter (fun pdata -> pa.SAH.add pdata.PD.local_module.PD.mname pdata) pdata_queue in
   let prog = { pdata_assoc = pa; } in
   let _ = (lastLoadProgram := Some prog) in
     prog
@@ -188,7 +188,7 @@ let env_create pd : 'module_e env_t =
   (eval_buffer_create pd) :: []
 
 let env_get_prelude env =
-  ((env_top env).program.pdata_assoc.OA.find "Prelude").PD.local_module
+  ((env_top env).program.pdata_assoc.SAH.find "Prelude").PD.local_module
 
 let local_env env =
   let top = env_top env in
@@ -635,7 +635,7 @@ let eval_module env =
    全ての module を thunk tree に変換した後で
    toplevel環境 main シンボルに束縛されている thunk を展開 *)
 let eval_program env program =
-  let _ = program.pdata_assoc.OA.iter (fun name pd ->
+  let _ = program.pdata_assoc.SAH.iter (fun name pd ->
                                          (* if name = "Prelude" then () else *)
                                            eval_module env pd.PD.syntax) in
     eval_arg_exp env (E.VarE (ID.idwl (ID.make_id "Main" "main") T.implicit_loc))
@@ -647,5 +647,5 @@ let eval_test fn =
     eval_program (env_create prog) prog
 
 (*
-  (Eval.load_program (Eval.LO.parse_files_with_prelude [fn])).Eval.pdata_assoc.Eval.OA.find "Main"
+  (Eval.load_program (Eval.LO.parse_files_with_prelude [fn])).Eval.pdata_assoc.Eval.SAH.find "Main"
 *)
