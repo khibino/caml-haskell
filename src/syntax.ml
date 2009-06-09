@@ -120,8 +120,18 @@ struct
         tclass_assoc = tclass_a;
 
         dump_buf = (fun () ->
-                      (fixity_a.SAH.to_string ()) ^ "\n" ^ (typesig_a.SAH.to_string ()) ^ "\n" ^ (tclass_a.SAH.to_string ()) ^ "\n")
+                      (SAH.to_string fixity_a) ^ "\n" ^ (SAH.to_string typesig_a) ^ "\n" ^ (SAH.to_string tclass_a) ^ "\n")
       }
+
+  let op_fixity pb_mod op =
+    if SAH.mem pb_mod.op_fixity_assoc op then
+      SAH.find pb_mod.op_fixity_assoc op
+    else (default_op_fixity, None)
+
+  let op_typesig pb_mod op =
+    if SAH.mem pb_mod.op_typesig_assoc op then
+      Some (SAH.find pb_mod.op_typesig_assoc op)
+    else None
 
 
   type t = {
@@ -143,10 +153,10 @@ struct
       module_assoc  = massoc;
 
       get_module = (fun modid ->
-                      if massoc.SAH.mem modid then massoc.SAH.find modid
+                      if SAH.mem massoc modid then SAH.find massoc modid
                       else
                         let m = create_module (MN.add modid) in
-                        let _ = massoc.SAH.add modid m in m);
+                        let _ = SAH.add massoc modid m in m);
       get_local_module = (fun () -> lm);
     } in
       Stack.push newb theBufferStack;
@@ -247,25 +257,25 @@ struct
 
 
   let as_op_set_fixity id fixity =
-    (get_module_buffer id).PBuf.op_fixity_assoc.SAH.add id.name fixity
+    SAH.add (get_module_buffer id).PBuf.op_fixity_assoc id.name fixity
 
   let as_op_set_typesig id tclass =
-    (get_module_buffer id).PBuf.op_typesig_assoc.SAH.add id.name tclass
+    SAH.add (get_module_buffer id).PBuf.op_typesig_assoc id.name tclass
 
   let class_regist id def =
-    (get_module_buffer id).PBuf.tclass_assoc.SAH.add id.name def
+    SAH.add (get_module_buffer id).PBuf.tclass_assoc id.name def
       
   let class_find id =
-    (get_module_buffer id).PBuf.tclass_assoc.SAH.find id.name
+    SAH.find (get_module_buffer id).PBuf.tclass_assoc id.name
       
   let class_p id =
-    (get_module_buffer id).PBuf.tclass_assoc.SAH.mem id.name
+    SAH.mem (get_module_buffer id).PBuf.tclass_assoc id.name
 
   let fun_regist id def =
-    (get_module_buffer id).PBuf.op_fun_assoc.SAH.replace id.name def
+    SAH.replace (get_module_buffer id).PBuf.op_fun_assoc id.name def
 
   let fun_find id =
-    (get_module_buffer id).PBuf.op_fun_assoc.SAH.find id.name
+    SAH.find (get_module_buffer id).PBuf.op_fun_assoc id.name
 
   let op_prelude_def () =
     as_op_set_fixity sp_colon ((InfixRight, 5), None)
@@ -299,17 +309,8 @@ struct
       (tclass_context_str def.tclass) ^ (fix_part def)
 
   let make_op_def pb_mod opn =
-    let (fixity, fix_tclass) = 
-      if pb_mod.PBuf.op_fixity_assoc.SAH.mem opn then
-        pb_mod.PBuf.op_fixity_assoc.SAH.find opn
-      else (default_op_fixity, None)
-    in
-
-    let sig_tclass = 
-      if pb_mod.PBuf.op_typesig_assoc.SAH.mem opn then
-        Some (pb_mod.PBuf.op_typesig_assoc.SAH.find opn)
-      else None
-    in
+    let (fixity, fix_tclass) = PBuf.op_fixity pb_mod opn in
+    let sig_tclass = PBuf.op_typesig pb_mod opn in
 
     let tclass =
       match (fix_tclass, sig_tclass) with
@@ -339,7 +340,7 @@ struct
   }
 
   let module_to_string m =
-    "module_data: " ^ m.mname ^ "\n" ^ (m.op_assoc.SAH.to_string ())
+    "module_data: " ^ m.mname ^ "\n" ^ (SAH.to_string m.op_assoc)
 
   let convert_local_module pb_mod_local pb_mod local_module_name =
     let new_op_assoc = SAH.create
@@ -349,11 +350,12 @@ struct
 
     let conv_op a_pb =
       let conv_op_assoc assoc =
-        assoc.SAH.iter
+        SAH.iter
           (fun op _ ->
-             new_op_assoc.SAH.replace
+             SAH.replace new_op_assoc
                op
                (make_op_def pb_mod_local op))
+          assoc
       in
         (conv_op_assoc a_pb.PBuf.op_fixity_assoc,
          conv_op_assoc a_pb.PBuf.op_typesig_assoc,
@@ -380,23 +382,23 @@ struct
 
   let get_module_data pd id =
     match id.ID.qual with
-        ID.Sp (_) -> pd.module_assoc.SAH.find (prelude_name ())
+        ID.Sp (_) -> SAH.find pd.module_assoc (prelude_name ())
       | ID.Qual nr ->
           let (mns, lm) = ((MN.str nr), pd.local_module) in
             if mns = lm.mname then lm
-            else pd.module_assoc.SAH.find mns
+            else SAH.find pd.module_assoc mns
 (*       failwith ("module " ^ modid ^" not found.") *)
 
   let id_op_def (pd, pre_pd) id =
     let (m, op) = (get_module_data pd id, id.ID.name) in
-      if m.op_assoc.SAH.mem op then
-        m.op_assoc.SAH.find op
+      if SAH.mem m.op_assoc op then
+        SAH.find m.op_assoc op
       else
-        let pm = pre_pd.module_assoc.SAH.find (prelude_name ()) in
-          if pm.op_assoc.SAH.mem op then
-            pm.op_assoc.SAH.find op
+        let pm = SAH.find pre_pd.module_assoc (prelude_name ()) in
+          if SAH.mem pm.op_assoc op then
+            SAH.find pm.op_assoc op
           else
-            failwith ("operator " ^ op ^" not found in module " ^ m.mname)
+            failwith ("operator " ^ op ^ " not found in module " ^ m.mname)
 
   let create_parsed_data pbuf (((local_module_id, _), _, _) as syntax_t) =
     let new_mod_assoc = SAH.create
@@ -404,17 +406,17 @@ struct
       (fun k m -> module_to_string m)
     in
     let local_module_name = local_module_id.ID.name in
-    let _ = pbuf.PBuf.module_assoc.SAH.iter
+    let _ = SAH.iter
       (fun modid pb_mod ->
          if ((PBuf.mnstr pb_mod) <> local_module_name) then
            let _ = debug_out ("Converting module '" ^ modid ^ "' ...") in
            let mod_data = convert_module pb_mod in
            let _ = debug_out ("Convert module done.") in
-             new_mod_assoc.SAH.add mod_data.mname mod_data
+             SAH.add new_mod_assoc mod_data.mname mod_data
          else
            debug_out ("Skipping module '" ^ modid ^ "' which is local")
-(*         else convert_local_module (pbuf.PBuf.get_local_module ()) pb_mod local_module_name *)
-      )
+             (* convert_local_module (pbuf.PBuf.get_local_module ()) pb_mod local_module_name *) )
+      pbuf.PBuf.module_assoc
     in
 
     let _ = debug_out ("Converting local module '" ^ local_module_name ^ "' ...") in
@@ -425,7 +427,7 @@ struct
     in
     let _ = debug_out ("Convert local module done.") in
 
-    let _ = new_mod_assoc.SAH.add local_module_name lm in
+    let _ = SAH.add new_mod_assoc local_module_name lm in
     let _ = (pbuf.PBuf.get_local_module ()).PBuf.mns := Some local_module_name in
       { module_assoc = new_mod_assoc;
 

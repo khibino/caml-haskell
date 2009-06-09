@@ -35,7 +35,7 @@ let load_program pdata_queue =
     (fun x -> "Already loaded module: " ^ x)
     (fun k pd -> pd.PD.local_module.PD.mname)
   in
-  let _ = Q.iter (fun pdata -> pa.SAH.add pdata.PD.local_module.PD.mname pdata) pdata_queue in
+  let _ = Q.iter (fun pdata -> SAH.add pa pdata.PD.local_module.PD.mname pdata) pdata_queue in
   let prog = { pdata_assoc = pa; } in
   let _ = (lastLoadProgram := Some prog) in
     prog
@@ -188,7 +188,7 @@ let env_create pd : 'module_e env_t =
   (eval_buffer_create pd) :: []
 
 let env_get_prelude env =
-  ((env_top env).program.pdata_assoc.SAH.find "Prelude").PD.local_module
+  (SAH.find (env_top env).program.pdata_assoc "Prelude").PD.local_module
 
 let local_env env =
   let top = env_top env in
@@ -635,9 +635,13 @@ let eval_module env =
    全ての module を thunk tree に変換した後で
    toplevel環境 main シンボルに束縛されている thunk を展開 *)
 let eval_program env program =
-  let _ = program.pdata_assoc.SAH.iter (fun name pd ->
-                                         (* if name = "Prelude" then () else *)
-                                           eval_module env pd.PD.syntax) in
+  let _ =
+    SAH.iter
+      (fun name pd ->
+         (* if name = "Prelude" then () else *)
+         eval_module env pd.PD.syntax)
+      program.pdata_assoc
+  in
     eval_arg_exp env (E.VarE (ID.idwl (ID.make_id "Main" "main") T.implicit_loc))
 
 
@@ -647,5 +651,5 @@ let eval_test fn =
     eval_program (env_create prog) prog
 
 (*
-  (Eval.load_program (Eval.LO.parse_files_with_prelude [fn])).Eval.pdata_assoc.Eval.SAH.find "Main"
+  SAH.find (Eval.load_program (Eval.LO.parse_files_with_prelude [fn])).Eval.pdata_assoc.Eval "Main"
 *)
