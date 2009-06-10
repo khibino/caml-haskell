@@ -63,7 +63,7 @@ let must_be_int li err =
       Int (i64, _) -> Int64.to_int i64
     | _ -> failwith err
 
-module ModuleNamespace =
+module ModuleKey =
 struct
   type t = string option ref
 
@@ -73,7 +73,7 @@ struct
   let str n =
     match !n with
         Some n -> n
-      | None -> failwith "ModuleNamespace.str called with not named local module!"  (* "<local>" *)
+      | None -> failwith "ModuleKey.str called with not named local module!"  (* "<local>" *)
 
 end
 
@@ -81,10 +81,10 @@ module ParseBuffer =
 struct
   module H = Hashtbl
   module SAH = SaHashtbl
-  module MN = ModuleNamespace
+  module MKEY = ModuleKey
 
   type module_buffer = {
-    mns : MN.t;
+    mns : MKEY.t;
 
     op_fixity_assoc : (string, (fixity * tclass option)) SAH.t;
     op_typesig_assoc : (string, tclass) SAH.t;
@@ -95,7 +95,7 @@ struct
     dump_buf : (unit -> string)
   }
 
-  let mnstr mb = MN.str mb.mns
+  let module_name mb = MKEY.str mb.mns
 
   let create_module mn = 
     let (fixity_a, typesig_a, fun_a, tclass_a) =
@@ -148,14 +148,14 @@ struct
     let (massoc, lm) = (SAH.create
                           (fun x -> "ParseBuffer BUG!: same name module added: " ^ x)
                           (fun k m -> m.dump_buf ()),
-                        create_module (MN.add_local ())) in
+                        create_module (MKEY.add_local ())) in
     let newb = {
       module_assoc  = massoc;
 
       get_module = (fun modid ->
                       if SAH.mem massoc modid then SAH.find massoc modid
                       else
-                        let m = create_module (MN.add modid) in
+                        let m = create_module (MKEY.add modid) in
                         let _ = SAH.add massoc modid m in m);
       get_local_module = (fun () -> lm);
     } in
@@ -173,13 +173,17 @@ struct
   let find_module modid = (last_buffer ()).get_module modid
   let find_local_module () = (last_buffer ()).get_local_module ()
 
+  let get_buffer_of_qaul nr =
+    let lm = find_local_module () in
+      if nr == lm.mns then lm
+      else find_module (MKEY.str nr)
+
 end
 
 module Identifier =
 struct
 
   module PBuf = ParseBuffer
-  module MN = ModuleNamespace
   module SAH = SaHashtbl
 
   type sp_con =
@@ -191,16 +195,6 @@ struct
   type qualifier =
       Sp of sp_con
     | Qual of string option ref
-
-(*
-  type 'loc id = {
-    name : string;
-    qual : qualifier;
-    loc : 'loc;
-  }
-
-  type idwl = T.loc id
-*)
 
   type id = {
     name : string;
@@ -250,10 +244,7 @@ struct
   let get_module_buffer id =
     match id.qual with
         Sp (_) -> PBuf.find_module (prelude_name ())
-      | Qual nr ->
-          let lm = PBuf.find_local_module () in
-            if nr == lm.PBuf.mns then lm
-            else PBuf.find_module (MN.str nr)
+      | Qual nr -> PBuf.get_buffer_of_qaul nr
 
 
   let as_op_set_fixity id fixity =
@@ -286,7 +277,7 @@ end
 module ParsedData =
 struct
   module H = Hashtbl
-  module MN = ModuleNamespace
+  module MKEY = ModuleKey
   module SAH = SaHashtbl
   module PBuf = ParseBuffer
   module ID = Identifier
@@ -315,7 +306,7 @@ struct
     let tclass =
       match (fix_tclass, sig_tclass) with
           (None, None) -> None
-        | (Some _, Some _) -> failwith ("Multiple declarations for " ^ (PBuf.mnstr pb_mod) ^ "." ^ opn)
+        | (Some _, Some _) -> failwith ("Multiple declarations for " ^ (PBuf.module_name pb_mod) ^ "." ^ opn)
         | (x, None) | (None, x) -> x
     in
     let v = { fname = opn;
@@ -327,7 +318,7 @@ struct
 
   type module_data = {
     mname : string;
-    mn_ref : MN.t;
+    mn_ref : MKEY.t;
     op_assoc : (string, op_def) SAH.t;
     tclass_assoc : (string, tclass) SAH.t;
   }
@@ -342,7 +333,12 @@ struct
   let module_to_string m =
     "module_data: " ^ m.mname ^ "\n" ^ (SAH.to_string m.op_assoc)
 
-  let convert_local_module pb_mod_local pb_mod local_module_name =
+  let convert_local_module pbuf local_module_name =
+    let (pb_mod_local, pb_mod) =
+      ((pbuf.PBuf.get_local_module ()),
+       (pbuf.PBuf.get_module local_module_name))
+    in
+
     let new_op_assoc = SAH.create
       (fun _ -> "BUG: convert_local_module")
       (fun _ op_def -> op_def_string op_def)
@@ -372,7 +368,7 @@ struct
       }
 
   let convert_module pb_mod =
-    { mname = PBuf.mnstr pb_mod;
+    { mname = PBuf.module_name pb_mod;
       mn_ref = pb_mod.PBuf.mns;
       op_assoc = SAH.create
         (fun _ -> "BUG: convert_module")
@@ -384,7 +380,7 @@ struct
     match id.ID.qual with
         ID.Sp (_) -> SAH.find pd.module_assoc (prelude_name ())
       | ID.Qual nr ->
-          let (mns, lm) = ((MN.str nr), pd.local_module) in
+          let (mns, lm) = ((MKEY.str nr), pd.local_module) in
             if mns = lm.mname then lm
             else SAH.find pd.module_assoc mns
 (*       failwith ("module " ^ modid ^" not found.") *)
@@ -408,7 +404,7 @@ struct
     let local_module_name = local_module_id.ID.name in
     let _ = SAH.iter
       (fun modid pb_mod ->
-         if ((PBuf.mnstr pb_mod) <> local_module_name) then
+         if ((PBuf.module_name pb_mod) <> local_module_name) then
            let _ = debug_out ("Converting module '" ^ modid ^ "' ...") in
            let mod_data = convert_module pb_mod in
            let _ = debug_out ("Convert module done.") in
@@ -420,11 +416,7 @@ struct
     in
 
     let _ = debug_out ("Converting local module '" ^ local_module_name ^ "' ...") in
-    let lm = convert_local_module
-      (pbuf.PBuf.get_local_module ())
-      (pbuf.PBuf.get_module local_module_name)
-      local_module_name
-    in
+    let lm = convert_local_module pbuf local_module_name in
     let _ = debug_out ("Convert local module done.") in
 
     let _ = SAH.add new_mod_assoc local_module_name lm in
