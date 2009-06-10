@@ -83,8 +83,14 @@ struct
   module SAH = SaHashtbl
   module MKEY = ModuleKey
 
+  let debugFlag = ref false  (* Syntax.ParseBuffer.debugFlag := true *)
+  let debug_out s =
+    if !debugFlag then
+      let _ = output_string stderr ("DEBUG: " ^ s ^ "\n") in
+        flush stderr
+
   type module_buffer = {
-    mns : MKEY.t;
+    mkey : MKEY.t;
 
     op_fixity_assoc : (string, (fixity * tclass option)) SAH.t;
     op_typesig_assoc : (string, tclass) SAH.t;
@@ -95,7 +101,7 @@ struct
     dump_buf : (unit -> string)
   }
 
-  let module_name mb = MKEY.str mb.mns
+  let module_name mb = MKEY.str mb.mkey
 
   let create_module mn = 
     let (fixity_a, typesig_a, fun_a, tclass_a) =
@@ -112,7 +118,7 @@ struct
          ((^) "Multiple declarations of")
          (fun n tcls -> ((tclass_str tcls) ^ n)))
     in {
-        mns = mn;
+        mkey = mn;
         
         op_fixity_assoc = fixity_a;
         op_typesig_assoc = typesig_a;
@@ -173,10 +179,72 @@ struct
   let find_module modid = (last_buffer ()).get_module modid
   let find_local_module () = (last_buffer ()).get_local_module ()
 
+  let module_key modid = (find_module modid).mkey
+  let local_module_key () = (find_local_module ()).mkey
+
   let get_buffer_of_qaul nr =
     let lm = find_local_module () in
-      if nr == lm.mns then lm
+      if nr == lm.mkey then lm
       else find_module (MKEY.str nr)
+
+  let make_op_def pb_mod opn op_cons op_str_fun =
+    let (fixity, fix_tclass) = op_fixity pb_mod opn in
+    let sig_tclass = op_typesig pb_mod opn in
+
+    let tclass =
+      match (fix_tclass, sig_tclass) with
+          (None, None) -> None
+        | (Some _, Some _) -> failwith ("Multiple declarations for " ^ (module_name pb_mod) ^ "." ^ opn)
+        | (x, None) | (None, x) -> x
+    in
+    let v = op_cons opn fixity tclass in
+      debug_out (Printf.sprintf "op '%s' defined." (op_str_fun v));
+      v
+
+  (* ParsedData への変換 - 解釈中のモジュールが参照しているモジュール *)
+  let conv_to_data nmod data_cons op_def_str =
+    data_cons
+      (module_name nmod)
+      nmod.mkey
+      (SAH.create
+         (fun _ -> "BUG: convert_module")
+         (fun k v -> k ^ " => " ^ (op_def_str v)))
+      nmod.tclass_assoc
+
+  (* ParsedData への変換 - 対解釈中モジュール *)
+  let conv_to_data_local buffer local_module_name (op_cons, op_def_str) data_cons =
+    let (local_mod, named_as_local) =
+      ((buffer.get_local_module ()),
+       (buffer.get_module local_module_name))
+    in
+
+    let result_op_assoc = SAH.create
+      (fun _ -> "BUG: convert_local_module")
+      (fun _ op_def -> op_def_str op_def)
+    in
+
+    let conv_op mod_to_conv =
+      let conv_op_assoc assoc =
+        SAH.iter
+          (fun op _ ->
+             SAH.replace result_op_assoc
+               op
+               (make_op_def local_mod op op_cons op_def_str))
+          assoc
+      in
+        (conv_op_assoc mod_to_conv.op_fixity_assoc,
+         conv_op_assoc mod_to_conv.op_typesig_assoc,
+         conv_op_assoc mod_to_conv.op_fun_assoc)
+    in
+
+    let _ = (conv_op local_mod,
+             conv_op named_as_local) in
+
+      data_cons
+        local_module_name
+        local_mod.mkey
+        result_op_assoc
+        named_as_local.tclass_assoc
 
 end
 
@@ -209,10 +277,10 @@ struct
   }
 
   let make_local_id n = 
-    make_id_core n (Qual (PBuf.find_local_module ()).PBuf.mns)
+    make_id_core n (Qual (PBuf.local_module_key ()))
 
   let make_id modid n = 
-    make_id_core n (Qual (PBuf.find_module modid).PBuf.mns)
+    make_id_core n (Qual (PBuf.module_key modid))
 
   let idwl id loc = (id, loc)
 
@@ -299,29 +367,15 @@ struct
     let fix_part d = d.fname ^ (fixity_str d.fixity) in
       (tclass_context_str def.tclass) ^ (fix_part def)
 
-  let make_op_def pb_mod opn =
-    let (fixity, fix_tclass) = PBuf.op_fixity pb_mod opn in
-    let sig_tclass = PBuf.op_typesig pb_mod opn in
-
-    let tclass =
-      match (fix_tclass, sig_tclass) with
-          (None, None) -> None
-        | (Some _, Some _) -> failwith ("Multiple declarations for " ^ (PBuf.module_name pb_mod) ^ "." ^ opn)
-        | (x, None) | (None, x) -> x
-    in
-    let v = { fname = opn;
-              fixity = fixity;
-              tclass = tclass; } in
-      debug_out (Printf.sprintf "op '%s' defined." (op_def_string v));
-      v
-
-
   type module_data = {
     mname : string;
     mn_ref : MKEY.t;
     op_assoc : (string, op_def) SAH.t;
     tclass_assoc : (string, tclass) SAH.t;
   }
+
+  let make_data n mkey opa tca =
+    { mname = n; mn_ref = mkey; op_assoc = opa; tclass_assoc = tca; }
 
   type 'module_e t = {
     module_assoc : (string, module_data) SAH.t;
@@ -332,49 +386,6 @@ struct
 
   let module_to_string m =
     "module_data: " ^ m.mname ^ "\n" ^ (SAH.to_string m.op_assoc)
-
-  let convert_local_module pbuf local_module_name =
-    let (pb_mod_local, pb_mod) =
-      ((pbuf.PBuf.get_local_module ()),
-       (pbuf.PBuf.get_module local_module_name))
-    in
-
-    let new_op_assoc = SAH.create
-      (fun _ -> "BUG: convert_local_module")
-      (fun _ op_def -> op_def_string op_def)
-    in
-
-    let conv_op a_pb =
-      let conv_op_assoc assoc =
-        SAH.iter
-          (fun op _ ->
-             SAH.replace new_op_assoc
-               op
-               (make_op_def pb_mod_local op))
-          assoc
-      in
-        (conv_op_assoc a_pb.PBuf.op_fixity_assoc,
-         conv_op_assoc a_pb.PBuf.op_typesig_assoc,
-         conv_op_assoc a_pb.PBuf.op_fun_assoc)
-    in
-    
-    let _ = (conv_op pb_mod_local, conv_op pb_mod) in
-      (* only local module convert operator definition *)
-
-      { mname = local_module_name;
-        mn_ref = pb_mod_local.PBuf.mns;
-        op_assoc = new_op_assoc;
-        tclass_assoc = pb_mod.PBuf.tclass_assoc;
-      }
-
-  let convert_module pb_mod =
-    { mname = PBuf.module_name pb_mod;
-      mn_ref = pb_mod.PBuf.mns;
-      op_assoc = SAH.create
-        (fun _ -> "BUG: convert_module")
-        (fun k v -> k ^ " => " ^ (op_def_string v));
-      tclass_assoc = pb_mod.PBuf.tclass_assoc;
-    }
 
   let get_module_data pd id =
     match id.ID.qual with
@@ -398,7 +409,7 @@ struct
 
   let create_parsed_data pbuf (((local_module_id, _), _, _) as syntax_t) =
     let new_mod_assoc = SAH.create
-      (fun _ -> "BUG: convert_local_module")
+      (fun _ -> "BUG: create_parsed_data")
       (fun k m -> module_to_string m)
     in
     let local_module_name = local_module_id.ID.name in
@@ -406,7 +417,8 @@ struct
       (fun modid pb_mod ->
          if ((PBuf.module_name pb_mod) <> local_module_name) then
            let _ = debug_out ("Converting module '" ^ modid ^ "' ...") in
-           let mod_data = convert_module pb_mod in
+           (* let mod_data = convert_module pb_mod in *)
+           let mod_data = PBuf.conv_to_data pb_mod make_data op_def_string in
            let _ = debug_out ("Convert module done.") in
              SAH.add new_mod_assoc mod_data.mname mod_data
          else
@@ -416,11 +428,15 @@ struct
     in
 
     let _ = debug_out ("Converting local module '" ^ local_module_name ^ "' ...") in
-    let lm = convert_local_module pbuf local_module_name in
+    let lm = PBuf.conv_to_data_local
+      pbuf local_module_name
+      ((fun fname fixity tclass -> { fname = fname; fixity = fixity; tclass = tclass; } ), op_def_string)
+      make_data
+    in
     let _ = debug_out ("Convert local module done.") in
 
     let _ = SAH.add new_mod_assoc local_module_name lm in
-    let _ = (pbuf.PBuf.get_local_module ()).PBuf.mns := Some local_module_name in
+    let _ = (pbuf.PBuf.get_local_module ()).PBuf.mkey := Some local_module_name in
       { module_assoc = new_mod_assoc;
 
         local_module = lm;
