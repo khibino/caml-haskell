@@ -1,1 +1,3 @@
-main = let (p, q) = (1, "a") in print q
+main = let (p, (q, r)) = (1 + 2, (2 + 3, 4 + 5))
+           _ = print r in
+       print q
