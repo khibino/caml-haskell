@@ -517,13 +517,13 @@ funlhs:
 /*(* 二項演算パターンのトップが最終的に関数束縛にされる *)*/
 op2_pat_pair:
   ks_minus integer op2_pat_pair_right
-    { let p = match $2 with (S.Int x) -> P.MIntP x | _ -> failwith "negative integer literal pattern syntax error."
+    { let p = match $2 with (S.Int (x), loc) -> P.MIntP (x, loc) | _ -> failwith "negative integer literal pattern syntax error."
       in (D.op2lhs_op $3,
           (P.PatF (p, D.op2lhs_left $3),
            D.op2lhs_right $3))
     }
 | ks_minus float op2_pat_pair_right
-    { let p = match $2 with (S.Float x) -> P.MFloatP x | _ -> failwith "negative integer literal pattern syntax error."
+    { let p = match $2 with (S.Float (x), loc) -> P.MFloatP (x, loc) | _ -> failwith "negative integer literal pattern syntax error."
       in (D.op2lhs_op $3,
           (P.PatF (p, D.op2lhs_left $3),
            D.op2lhs_right $3))
@@ -739,7 +739,7 @@ fbind:
 
 pat:
   var ks_plus integer   /*(successor pattern)*/
-      { match $3 with (S.Int (i, l)) -> P.PlusP($1, i, l) | _ -> failwith "plus integer pattern syntax error." }
+      { match $3 with (S.Int (i), loc) -> P.PlusP($1, i, loc) | _ -> failwith "plus integer pattern syntax error." }
 | pat0  { $1 }
 ;
 
@@ -756,9 +756,9 @@ lpati   ->      (lpati | pati+1) qconop(l,i) pati+1
 /*
 lpat6:
   ks_minus integer      (negative literal)
-      { match $2 with (S.Int (v, l)) -> S.P.MIntP (v, l) | _ -> failwith "negative integer literal pattern syntax error." }
+      { match $2 with (S.Int (v), l) -> S.P.MIntP (v, l) | _ -> failwith "negative integer literal pattern syntax error." }
 | ks_minus float        (negative literal)
-      { match $2 with (S.Float (v, l)) -> S.P.MFloatP (v, l) | _ -> failwith "negative integer literal pattern syntax error." }
+      { match $2 with (S.Float (v), l) -> S.P.MFloatP (v, l) | _ -> failwith "negative integer literal pattern syntax error." }
 ;
 */
 
@@ -772,11 +772,11 @@ pat0:
 
 op2_patn_list:
   ks_minus integer op2_patn_right
-    { let p = match $2 with (S.Int x) -> P.MIntP x | _ -> failwith "negative integer literal pattern syntax error."
+    { let p = match $2 with (S.Int (x), loc) -> P.MIntP (x, loc) | _ -> failwith "negative integer literal pattern syntax error."
       in P.PatF (p, $3)
     }
 | ks_minus float op2_patn_right
-    { let p = match $2 with (S.Float x) -> P.MFloatP x | _ -> failwith "negative integer literal pattern syntax error."
+    { let p = match $2 with (S.Float (x), loc) -> P.MFloatP (x, loc) | _ -> failwith "negative integer literal pattern syntax error."
       in P.PatF (p, $3)
     }
 | pat10 op2_patn_right  { P.PatF ($1, $2) }
@@ -1014,19 +1014,19 @@ literal:
 ;
 
 integer:
-  L_INTEGER  { S.Int((fst $1), (snd $1)) }
+  L_INTEGER  { (S.Int(fst $1), (snd $1)) }
 ;
 
 float:
-  L_FLOAT  { S.Float((fst $1), (snd $1)) }
+  L_FLOAT  { (S.Float(fst $1), (snd $1)) }
 ;
 
 char:
-  L_CHAR  { S.Char((fst $1), (snd $1)) }
+  L_CHAR  { (S.Char(fst $1), (snd $1)) }
 ;
 
 string:
-  L_STRING  { S.String((fst $1), (snd $1)) }
+  L_STRING  { (S.String(fst $1), (snd $1)) }
 ;
 
 /*                          */

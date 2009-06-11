@@ -42,25 +42,21 @@ let tclass_context_str =
 
 let prelude_name () = "Prelude"
 
-type 'a literal =
-    Int of (int64 * 'a)
-  | Float of (float * 'a)
-  | Char of (char * 'a)
-  | String of (string * 'a)
+type literal =
+    Int of (int64)
+  | Float of (float)
+  | Char of (char)
+  | String of (string)
 
-let unloc_literal  =
-  function
-      Int (i64, _) -> Int (i64, T.implicit_loc)
-    | Float (f, _) -> Float (f, T.implicit_loc)
-    | Char (c, _) -> Char (c, T.implicit_loc)
-    | String (s, _) -> String (s, T.implicit_loc)
+type litwl = (literal * T.loc)
 
-let eq_literal aa bb =
-  (unloc_literal aa) = (unloc_literal bb)
+let unloc_literal = (fun l -> fst l)
+
+let eq_literal aa bb = (aa = bb)
 
 let must_be_int li err =
   match li with
-      Int (i64, _) -> Int64.to_int i64
+      (Int (i64), _) -> Int64.to_int i64
     | _ -> failwith err
 
 module ModuleKey =
@@ -503,7 +499,7 @@ struct
     | AsP of ID.idwl * pat
     | ConP of ID.idwl * pat list
     | LabelP of ID.idwl * (ID.idwl * pat) list
-    | LiteralP of T.loc literal
+    | LiteralP of litwl
     | WCardP
     | TupleP of pat list
     | ListP of pat list
@@ -811,7 +807,7 @@ struct
   type aexp =
       VarE of ID.idwl (* qvar *)
     | ConsE of ID.idwl (* gcon *)
-    | LiteralE of T.loc literal
+    | LiteralE of litwl
     | ParenE of t
     | TupleE of t list
     | ListE of t list

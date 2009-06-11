@@ -55,7 +55,7 @@ and 'module_e closure =
 and 'module_e value =
   | Bottom
   | IO
-  | Literal of T.loc SYN.literal
+  | Literal of SYN.literal
   | Cons of (ID.id * ('module_e thunk_type list))
   | LabelCons of (ID.id * (ID.id, 'module_e thunk_type) OH.t )
   | Tuple of ('module_e thunk_type list)
@@ -103,12 +103,12 @@ let primTable =
                              ((Literal x), (Literal y)) ->
                                begin
                                  match (x, y) with
-                                     (SYN.Int (xi, _), SYN.Int (yi, _)) -> 
+                                     (SYN.Int (xi), SYN.Int (yi)) -> 
                                        (* F.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi); *)
-                                       Literal (SYN.Int ((i64f xi yi), T.implicit_loc))
-                                   | (SYN.Int (xi, _), SYN.Float (yf, _)) -> Literal (SYN.Float ((floatf (Int64.to_float xi) yf), T.implicit_loc))
-                                   | (SYN.Float (xf, _), SYN.Int (yi, _)) -> Literal (SYN.Float ((floatf xf (Int64.to_float yi)), T.implicit_loc))
-                                   | (SYN.Float (xf, _), SYN.Float (yf, _)) -> Literal (SYN.Float ((floatf xf yf), T.implicit_loc))
+                                       Literal (SYN.Int (i64f xi yi))
+                                   | (SYN.Int (xi), SYN.Float (yf)) -> Literal (SYN.Float (floatf (Int64.to_float xi) yf))
+                                   | (SYN.Float (xf), SYN.Int (yi)) -> Literal (SYN.Float (floatf xf (Int64.to_float yi)))
+                                   | (SYN.Float (xf), SYN.Float (yf)) -> Literal (SYN.Float (floatf xf yf))
                                    | _ -> raise_type_err name "Non-number argument found."
                                end
                            | _ -> raise_type_err name "Non-literal arguemnt found."
@@ -130,12 +130,12 @@ let primTable =
                                if
                                  begin
                                    match (x, y) with
-                                       (SYN.Int (xi, _), SYN.Int (yi, _)) ->
+                                       (SYN.Int (xi), SYN.Int (yi)) ->
                                          (* F.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi); *)
                                          i64f xi yi
-                                     | (SYN.Int (xi, _), SYN.Float (yf, _)) -> floatf (Int64.to_float xi) yf
-                                     | (SYN.Float (xf, _), SYN.Int (yi, _)) -> floatf xf (Int64.to_float yi)
-                                     | (SYN.Float (xf, _), SYN.Float (yf, _)) -> floatf xf yf
+                                     | (SYN.Int (xi), SYN.Float (yf)) -> floatf (Int64.to_float xi) yf
+                                     | (SYN.Float (xf), SYN.Int (yi)) -> floatf xf (Int64.to_float yi)
+                                     | (SYN.Float (xf), SYN.Float (yf)) -> floatf xf yf
                                      | _ -> raise_type_err name "Non-number argument found."
                                  end
                                then valTrue else valFalse
@@ -155,7 +155,7 @@ let primTable =
                      begin
                        match th() with
                            Literal (SYN.String m) ->
-                             failwith ("error: " ^ (fst m))
+                             failwith ("error: " ^ m)
                          | _ -> raise_type_err prim_primError "Non-literal arguemnt found."
                      end
                  | _ -> raise_type_err prim_primError "Arguemnt not found.") 1) in
@@ -166,9 +166,9 @@ let primTable =
                    th :: [] ->
                      begin
                        match th() with
-                           Literal (SYN.Int (i, _)) -> print_endline (Int64.to_string i); IO
-                         | Literal (SYN.Float (f, _)) -> print_endline (string_of_float f); IO
-                         | Literal (SYN.String (m, _)) -> print_endline m; IO
+                           Literal (SYN.Int (i)) -> print_endline (Int64.to_string i); IO
+                         | Literal (SYN.Float (f)) -> print_endline (string_of_float f); IO
+                         | Literal (SYN.String (m)) -> print_endline m; IO
                          | v -> raise_type_err prim_print ("Non-literal arguemnt found. " ^ (Std.dump v))
                      end
                  | _ -> raise_type_err prim_print "Arguemnt not found.") 1) in
@@ -248,16 +248,6 @@ let applyClosureStack : e_module_type value Stack.t = Stack.create ()
 (* let eval_func_exp = dummy_eval_func_exp *)
 (* let eval_arg_exp = dummy_eval_arg_exp *)
 
-
-(*let arity_list_take l n =
-  let rec take_rec buf rest nn =
-    match (nn, rest) with
-        (0, _) -> (L.rev buf, rest)
-      | (_, f::rest) -> take_rec (f::buf) rest (nn - 1)
-      | (_, []) -> failwith
-          (F.sprintf "apply_closure: Too many arguemnt(s): expects %d argument(s), but is here applied to %d argument(s)"
-             (L.length l) n)
-  in take_rec [] l n *)
 
 let debug = false
 
@@ -355,7 +345,7 @@ and bind_pat_with_thunk pat =
                        fpat_list
                  | _                                         -> (false, [thunk]))
 
-      | P.LiteralP literal ->
+      | P.LiteralP (literal, _) ->
           (fun _ thunk -> match thunk () with
                Literal expl when (SYN.eq_literal expl literal) -> (true, [thunk])
              | _                                               -> (false, [thunk]))
@@ -381,7 +371,10 @@ and bind_pat_with_thunk pat =
 
 (*
     | P.MIntP (int64, _) ->
-        (fun _ thunk -> thunk)
+        (fun env thunk -> 
+           let value = thunk () in
+             match value with
+                 Literal
 
     | P.MFloatP (float, _) ->
         (fun _ thunk -> thunk)
@@ -472,7 +465,7 @@ and eval_arg_exp env =
     | E.ConsE ((id, _)) ->
         let v = Cons (id, []) in v
          
-    | E.LiteralE (lit) -> Literal lit
+    | E.LiteralE (lit, _) -> Literal lit
 
     | E.ParenE (exp) -> eval_exp env exp
 
@@ -504,7 +497,7 @@ and eval_exp env =
 
     | E.LambdaE (apat_list, exp) ->
         let c = mk_lambda_closure env apat_list exp in c
-    | E.FexpE (E.FfunE (E.LiteralE lit)) ->
+    | E.FexpE (E.FfunE (E.LiteralE (lit, _))) ->
         let l = mk_literal lit in l
     | nv_exp ->
         (match nv_exp with
@@ -549,7 +542,7 @@ and expand_rhs env rhs =
                     (GD.Guard gde, exp) ->
                       E.IfE (gde, exp, else_e))
              gdrhs_list
-             (E.FexpE (E.FappE (E.FfunE (E.make_var_exp "error" (env_get_prelude env)), E.LiteralE (SYN.String ("Unmatched pattern", T.implicit_loc))))),
+             (E.FexpE (E.FappE (E.FfunE (E.make_var_exp "error" (env_get_prelude env)), E.LiteralE ((SYN.String "Unmatched pattern"), T.implicit_loc)))),
            (fun le -> where_env le where))
                                  
 (*       | x -> failwith (F.sprintf "rhs: Not implemented: %s" (Std.dump x)) *)
@@ -642,7 +635,7 @@ let eval_program env program =
          eval_module env pd.PD.syntax)
       program.pdata_assoc
   in
-    eval_arg_exp env (E.VarE (ID.idwl (ID.make_id "Main" "main") T.implicit_loc))
+    eval_arg_exp env (E.VarE (ID.idwul (ID.make_id "Main" "main")))
 
 
 (*  *)
