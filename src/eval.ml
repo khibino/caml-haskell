@@ -346,9 +346,11 @@ and bind_pat_with_thunk pat =
                  | _                                         -> (false, [thunk]))
 
       | P.LiteralP (literal, _) ->
-          (fun _ thunk -> match thunk () with
-               Literal expl when (SYN.eq_literal expl literal) -> (true, [thunk])
-             | _                                               -> (false, [thunk]))
+          (fun _ thunk ->
+             (match thunk () with
+                  Literal expl when (SYN.eq_literal expl literal) -> true
+                | _                                               -> false),
+             [thunk])
 
       | P.WCardP ->
           (fun _ thunk -> (true, [thunk]))
@@ -369,16 +371,25 @@ and bind_pat_with_thunk pat =
                      -> sub_patterns_match env pat_list args
                  | _ -> (false, [thunk]))
 
+      | P.MIntP (i64pat, _) ->
+          (fun env thunk -> 
+             (let value = thunk () in
+                match value with
+                  | Literal (SYN.Int i64val) when i64pat = (Int64.neg i64val)
+                      -> true
+                  | _ -> false),
+             [thunk])
+
+      | P.MFloatP (flpat, _) ->
+          (fun env thunk -> 
+             let value = thunk () in
+               (match value with
+                  | Literal (SYN.Float flval) when flpat = (-. flval) ->
+                      true
+                  | _ -> false),
+             [thunk])
+
 (*
-    | P.MIntP (int64, _) ->
-        (fun env thunk -> 
-           let value = thunk () in
-             match value with
-                 Literal
-
-    | P.MFloatP (float, _) ->
-        (fun _ thunk -> thunk)
-
     | P.Irref pat ->
         (fun env thunk -> bind_pat_with_thunk pat env thunk)
 

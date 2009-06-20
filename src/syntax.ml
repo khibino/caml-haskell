@@ -121,8 +121,10 @@ struct
         op_fun_assoc = fun_a;
         tclass_assoc = tclass_a;
 
-        dump_buf = (fun () ->
-                      (SAH.to_string fixity_a) ^ "\n" ^ (SAH.to_string typesig_a) ^ "\n" ^ (SAH.to_string tclass_a) ^ "\n")
+        dump_buf = (fun () -> ""
+                      ^ (SAH.to_string fixity_a)  ^ "\n"
+                      ^ (SAH.to_string typesig_a) ^ "\n"
+                      ^ (SAH.to_string tclass_a)  ^ "\n")
       }
 
   let op_fixity pb_mod op =
@@ -299,7 +301,7 @@ struct
     match id.qual with
         Sp _ -> id.name
       | Qual { contents = Some qname } -> qname ^ "." ^ id.name
-      | Qual { contents = None }       -> "<undef>." ^ id.name
+      | Qual { contents = None }       -> "<unqual>." ^ id.name
 
   let make_id_with_mod iwm = make_id iwm.T.modid iwm.T.id
 
