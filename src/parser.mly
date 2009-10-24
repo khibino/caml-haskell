@@ -5,6 +5,8 @@
   module TK = Token
   module S = Syntax
 
+  module PBuf = S.ParseBuffer
+
   module I = S.Identifier
 
   module D = S.Decl
@@ -77,8 +79,13 @@
 %token  <Token.loc>  EOF
 
 %start  e_module
-%type <((Syntax.Identifier.id * Token.loc) * Syntax.Module.export list * (Syntax.Module.impdecl list * Syntax.Expression.t Syntax.Decl.top list))> e_module
+%type <((Symbol.t * Token.loc) * Syntax.Module.export list * (Syntax.Module.impdecl list * Syntax.Expression.t Syntax.Decl.top list))> e_module
 /*  type e_module_type = (T.loc I.id * M.export list * (M.impdecl list * E.t D.top list)) */
+
+%start  module_prefix
+/*(*  %type <(Symbol.t * Token.loc) * Syntax.Module.export list> module_prefix  *)*/
+/*(*  %type <Syntax.ParseBuffer.t> module_prefix  *)*/
+%type <Symbol.t> module_prefix
 
 %start  exp
 %type <Syntax.Expression.t> exp
@@ -92,9 +99,38 @@ e_module:
 module_top:
   K_MODULE modid export_list K_WHERE body { ($2, $3, $5) }
 | K_MODULE modid K_WHERE body         { ($2, [], $4) }
-| body { (I.idwul (I.make_local_id "Main"),
-          [M.EVar (I.idwul (I.make_local_id "main"))],
+| body { (I.idwul S.the_main_symbol,
+          [M.EVar (I.idwul (I.make_qual_id S.the_main_name "main"))],
           $1) }
+;
+
+/*
+module_prefix:
+  K_MODULE modid export_list K_WHERE { ($2, $3) }
+| K_MODULE modid K_WHERE             { ($2, []) }
+| { (I.idwul S.the_main_symbol,
+     [M.EVar (I.idwul (I.make_qual_id S.the_main_name "main"))]) }
+;
+*/
+
+/*
+module_prefix:
+  K_MODULE modid export_list K_WHERE { PBuf.create (fst $2) }
+| K_MODULE modid K_WHERE             { PBuf.create (fst $2) }
+| { PBuf.create S.the_main_symbol }
+;
+*/
+
+/*
+module_prefix:
+  K_MODULE modid  { PBuf.create (fst $2) }
+| { PBuf.create S.the_main_symbol }
+;
+*/
+
+module_prefix:
+  K_MODULE modid  { fst $2 }
+| { S.the_main_symbol }
 ;
 
 body:
@@ -279,9 +315,8 @@ semi_decl_list:
 
 decl:
   gendecl  { D.GenDecl ($1) }
-| funlhs rhs  { D.FunDec [($1, $2)] }  /*(* 4.4.3.1 関数束縛 *)*/
-| pat0 rhs  { D.PatBind ($1, $2) }   /*(* 4.4.3.2 パターン束縛 *)*/
-/*(* パターン x + i は pat0 になりえない。pat0 になりえるのは (x + i) *)*/
+| funlhs rhs  { (* 4.4.3.1 関数束縛 *)     D.FunDec [($1, $2)] }
+| pat0 rhs    { (* 4.4.3.2 パターン束縛 *) D.PatBind ($1, $2)  (* パターン x + i は pat0 になりえない。pat0 になりえるのは (x + i) *) }
 ;
 
 cdecl_list:
@@ -343,13 +378,18 @@ fixity:
 ;
 
 context:
-  clazz  { [$1] }
+  typ_maybe_clazzlist    { List.map (fun tvpair -> CTX.Class tvpair) (TY.destruct_for_classlist $1) }
+| typ_maybe_paren_clazz  { [ CTX.Class (TY.destruct_for_paren_class $1) ] }
+| clazz  { [$1] }
 | SP_LEFT_PAREN clazz_list SP_RIGHT_PAREN  { $2 }       /*(n>0)*/
 | SP_LEFT_PAREN SP_RIGHT_PAREN  { [] }  /*(n=0)*/
 ;
 
 typ:
-  btype KS_R_ARROW typ  { TY.FunT ($1, $3) }    /*(function type)*/
+  typ_maybe_clazz { $1 }
+| typ_maybe_paren_clazz { $1 }
+| typ_maybe_clazzlist { $1 }
+| btype KS_R_ARROW typ  { TY.FunT ($1, $3) }    /*(function type)*/
 | btype  { TY.TT $1 }
 ;
 
@@ -384,8 +424,26 @@ clazz_list:
 | clazz  { [$1] }
 ;
 
+typ_maybe_clazz:
+  qtycon tyvar { TY.maybe_class $1 $2 }
+;
+
+typ_maybe_paren_clazz:
+  SP_LEFT_PAREN typ_maybe_clazz SP_RIGHT_PAREN { TY.maybe_paren_class $2 }
+;
+
+typ_maybe_clazz_comma_list:
+  typ_maybe_clazz SP_COMMA typ_maybe_clazz_comma_list  { $1 :: $3 }
+| typ_maybe_clazz SP_COMMA typ_maybe_clazz { [$1; $3] }
+;
+
+typ_maybe_clazzlist:
+  SP_LEFT_PAREN typ_maybe_clazz_comma_list SP_RIGHT_PAREN { TY.maybe_classlist $2 }
+;
+
 clazz:
-  qtycls tyvar  { CTX.Class ($1, $2) }
+  typ_maybe_clazz { CTX.Class (TY.destruct_for_class $1) }
+| qtycls tyvar  { CTX.Class ($1, $2) }
 | qtycls SP_LEFT_PAREN tyvar atype_list SP_RIGHT_PAREN  { CTX.ClassApp($1, $3, $4) }    /*(n>=1)*/
 ;
 
@@ -866,11 +924,11 @@ tyvar:
 ;
 
 tycon:
-  conid  { $1 }         /*(type constructors)*/
+  conid  { let (f, s) = $1 in I.make_unqual_idwl_on_parse f s }         /*(type constructors)*/
 ;
 
 modid:
-  conid  { $1 }          /*(modules)*/
+  conid  { let (f, s) = $1 in ((Symbol.intern f), s) }          /*(modules)*/
 ;
 
 var:
@@ -884,7 +942,7 @@ qvar:
 ;       /*(qualified variable)*/
 
 con:
-  conid  { $1 }
+  conid  { let (f, s) = $1 in I.make_unqual_idwl_on_parse f s }
 | SP_LEFT_PAREN consym SP_RIGHT_PAREN  { $2 }
 ;       /*(constructor)*/
 
@@ -905,7 +963,7 @@ qvarop:
 
 conop:
   consym  { $1 }
-| SP_B_QUOTE conid SP_B_QUOTE  { $2 }
+| SP_B_QUOTE conid SP_B_QUOTE  { let (f, s) = $2 in I.make_unqual_idwl_on_parse f s }
 ;       /*(constructor operator)*/
 
 qconop:
@@ -936,7 +994,7 @@ qvarid:
 
 qconid:
   T_MOD_CONID   { I.make_idwl_with_mod $1 }
-| conid         { $1 }
+| conid         { let (f, s) = $1 in I.make_unqual_idwl_on_parse f s }
 ;
 
 qvarsym:
@@ -950,22 +1008,22 @@ qconsym:
 ;
 
 varid:
-  T_VARID  { I.make_local_idwl (fst $1) (snd $1) }
+  T_VARID  { I.make_unqual_idwl_on_parse (fst $1) (snd $1) }
 | k_as         { $1 }
 | k_qualified  { $1 }
 | k_hiding     { $1 }
 ;
 
 k_as:
-  K_AS   { I.make_local_idwl "as" $1 }
+  K_AS   { I.make_unqual_idwl_on_parse "as" $1 }
 ;
 
 k_qualified:
-  K_QUALIFIED   { I.make_local_idwl "qulified" $1 }
+  K_QUALIFIED   { I.make_unqual_idwl_on_parse "qulified" $1 }
 ;
 
 k_hiding:
-  K_HIDING   { I.make_local_idwl "hiding" $1 }
+  K_HIDING   { I.make_unqual_idwl_on_parse "hiding" $1 }
 ;
 
 qtycls:
@@ -975,35 +1033,35 @@ qtycls:
 ;
 
 tycls:
-  conid  { $1 }         /*(type classes)*/
-| T_CLSID  { I.make_local_idwl (fst $1) (snd $1) }
+  conid  { let (f, s) = $1 in I.make_unqual_idwl_on_parse f s }         /*(type classes)*/
+| T_CLSID  { I.make_unqual_idwl_on_parse (fst $1) (snd $1) }
 ;
 
 conid:
-  T_CONID  { I.make_local_idwl (fst $1) (snd $1) }
+  T_CONID  { $1 } /*(*{ let (f, s) = $1 in I.make_unqual_idwl_on_parse f s }*)*/
 ;
 
 varsym:
-  T_VARSYM  { I.make_local_idwl (fst $1) (snd $1) }
+  T_VARSYM  { I.make_unqual_idwl_on_parse (fst $1) (snd $1) }
 | ks_plus    { $1 }
 | ks_minus   { $1 }
 | ks_exclam  { $1 }
 ;
 
 ks_plus:
-  KS_PLUS   { I.make_local_idwl "+" $1 }
+  KS_PLUS   { I.make_unqual_idwl_on_parse "+" $1 }
 ;
 
 ks_minus:
-  KS_MINUS  { I.make_local_idwl "-" $1 }
+  KS_MINUS  { I.make_unqual_idwl_on_parse "-" $1 }
 ;
 
 ks_exclam:
-  KS_EXCLAM  { I.make_local_idwl "!" $1 }
+  KS_EXCLAM  { I.make_unqual_idwl_on_parse "!" $1 }
 ;
 
 consym:
-  T_CONSYM  { I.make_local_idwl (fst $1) (snd $1) }
+  T_CONSYM  { I.make_unqual_idwl_on_parse (fst $1) (snd $1) }
 ;
 
 literal:

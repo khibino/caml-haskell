@@ -1,6 +1,6 @@
 
 module SYN = Syntax
-(* module PBuf = SYN.ParseBuffer *)
+module PBuf = SYN.ParseBuffer
 module SAH = SaHashtbl
 module PD = SYN.ParsedData
 (* module D = SYN.Decl *)

@@ -8,10 +8,12 @@ module F = Printf
 module OH = OrderedHash
 module SAH = SaHashtbl
 module T = Token
+module S = Symbol
 module LO = Layout
 module SYN = Syntax
-module PD = SYN.ParsedData
+module PBuf = SYN.ParseBuffer
 module ID = SYN.Identifier
+module PD = SYN.ParsedData
 module D = SYN.Decl
 module M = SYN.Module
 module CA = SYN.Case
@@ -21,7 +23,7 @@ module P = SYN.Pattern
 module E = SYN.Expression
 
 
-type e_module_type = (ID.idwl * M.export list * (M.impdecl list * E.t D.top list))
+type e_module_type = (ID.symwl * M.export list * (M.impdecl list * E.t D.top list))
 
 (* プログラム全体 - プログラムはモジュールの集合 *)
 type 'module_e program_buffer = {
@@ -33,9 +35,9 @@ let lastLoadProgram : e_module_type program_buffer option ref = ref None
 let load_program pdata_queue =
   let pa = SAH.create
     (fun x -> "Already loaded module: " ^ x)
-    (fun k pd -> pd.PD.local_module.PD.mname)
+    (fun k pd -> (S.name pd.PD.local_module.PD.symbol))
   in
-  let _ = Q.iter (fun pdata -> SAH.add pa pdata.PD.local_module.PD.mname pdata) pdata_queue in
+  let _ = Q.iter (fun pdata -> SAH.add pa (S.name pdata.PD.local_module.PD.symbol) pdata) pdata_queue in
   let prog = { pdata_assoc = pa; } in
   let _ = (lastLoadProgram := Some prog) in
     prog
@@ -80,8 +82,10 @@ and 'module_e eval_buffer = {
 and 'module_e env_t = 'module_e eval_buffer list
 
 
-let gPrelude = ref (Some "Prelude")
-let simple_cons name = Cons (ID.make_id_core name (ID.Qual gPrelude), [])
+(* let gPrelude = ref (Some "Prelude") *)
+(* The first Syntax.ParseBuffer.t used when loading Prelude.hs *)
+(* let gPreludeBuf = PBuf.create () *)
+let simple_cons name = Cons (ID.make_id "Prelude" name, [])
 
 let valTrue  = simple_cons "True"
 let valFalse = simple_cons "False"
@@ -249,7 +253,7 @@ let applyClosureStack : e_module_type value Stack.t = Stack.create ()
 (* let eval_arg_exp = dummy_eval_arg_exp *)
 
 
-let debug = false
+let debug = true
 
 let h_find err_fun =
   if debug then
@@ -465,10 +469,10 @@ and eval_arg_exp env =
   function
       E.VarE ((id, _)) ->
         begin
-          if H.mem primTable id.ID.name then
-            H.find primTable id.ID.name
+          if H.mem primTable (ID.name_str id) then
+            H.find primTable (ID.name_str id)
           else
-            (* let _ = print_endline id.ID.name in *)
+            (* let _ = print_endline (ID.name_str id) in *)
             let thunk = eval_id env id in
               thunk ()
         end
@@ -524,8 +528,8 @@ and eval_exp env =
 
            | E.IfE (pre_e, then_e, else_e) -> 
                (match (eval_exp env pre_e) with
-                    Cons(id, []) when id.ID.name = "True" -> eval_exp env then_e
-                  | Cons(id, []) when id.ID.name = "False" -> eval_exp env else_e
+                    Cons(id, []) when (ID.name_str id) = "True" -> eval_exp env then_e
+                  | Cons(id, []) when (ID.name_str id) = "False" -> eval_exp env else_e
                   | x  -> failwith (F.sprintf "exp: if: Type error %s" (Std.dump x)))
            | E.CaseE (exp, []) ->
                Bottom
@@ -553,7 +557,7 @@ and expand_rhs env rhs =
                     (GD.Guard gde, exp) ->
                       E.IfE (gde, exp, else_e))
              gdrhs_list
-             (E.FexpE (E.FappE (E.FfunE (E.make_var_exp "error" (env_get_prelude env)), E.LiteralE ((SYN.String "Unmatched pattern"), T.implicit_loc)))),
+             (E.FexpE (E.FappE (E.FfunE (E.make_prelude_var_exp  "error"), E.LiteralE ((SYN.String "Unmatched pattern"), T.implicit_loc)))),
            (fun le -> where_env le where))
                                  
 (*       | x -> failwith (F.sprintf "rhs: Not implemented: %s" (Std.dump x)) *)
@@ -631,8 +635,7 @@ let eval_topdecl env tdecl =
 
 let eval_module env =
   function
-(*       (x, y, (z, topdecl_list)) -> (x, y, (z, List.map (eval_topdecl env) topdecl_list)) *)
-      (x, y, (z, topdecl_list)) ->
+      (modid, export_list, (import_list, topdecl_list)) ->
         let _ = List.map (eval_topdecl env) topdecl_list in ()
 
 (* eval_program : 

@@ -62,8 +62,9 @@ NAT_LINK.cmx = $(ocamlopt) $(ocamlopt_opt) $(ocaml_load_path) $(ocaml_extra_load
 %.cmx %.o %.cmi: %.ml
 	$(NAT_COMPILE.ml) $< -o $@
 
-%.mli: %.ml
-	$(INTERFACE.ml) $< > $@
+#%.mli: %.ml
+%.mli:
+	$(INTERFACE.ml) $(@:.mli=.ml) > $@
 
 # info:
 # 	@echo "byte_stdlibs = $(byte_stdlibs)"
