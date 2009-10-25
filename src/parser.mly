@@ -360,8 +360,7 @@ gendecl:
 ;
 
 op_list:
-  /*op1 , ... , opn     (n>=1)*/
-  op SP_COMMA op_list  { $1 :: $3 }
+  op SP_COMMA op_list  { $1 :: $3 }  /*op1 , ... , opn     (n>=1)*/
 | op  { [$1] }
 ;
 
@@ -386,24 +385,24 @@ context:
 ;
 
 typ:
-  typ_maybe_clazz { $1 }
-| typ_maybe_paren_clazz { $1 }
-| typ_maybe_clazzlist { $1 }
-| btype KS_R_ARROW typ  { TY.FunT ($1, $3) }    /*(function type)*/
+  btype KS_R_ARROW typ  { TY.FunT ($1, $3) }    /*(function type)*/
 | btype  { TY.TT $1 }
 ;
 
 btype:
-  btype atype  { TY.AppBT ($1, $2) }    /*(type application)*/
+  typ_maybe_clazz { $1 }
+| btype atype  { TY.AppBT ($1, $2) }    /*(type application)*/
 | atype  { TY.BT $1 }
 ;
 
 atype:
   gtycon  { TY.ConsAT $1 }
 | tyvar  { TY.VarAT $1 }
-| SP_LEFT_PAREN typ_tupple_list SP_RIGHT_PAREN  { TY.TupleAT $2 }       /*(tuple type, k>=2)*/
-| SP_LEFT_BRACKET typ SP_RIGHT_BRACKET  { TY.ListAT $2 }        /*(list type)*/
-| SP_LEFT_PAREN typ SP_RIGHT_PAREN  { TY.AT $2 }        /*(parenthesized constructor)*/
+| typ_maybe_clazzlist { $1 }  /*(* (tuple type, k>=2)  same syntax as type class  *)*/
+| typ_maybe_paren_clazz { $1 }   /*(* (parenthesized constructor)  same syntax as type class *)*/
+| SP_LEFT_PAREN typ_tupple_list SP_RIGHT_PAREN  { TY.TupleAT $2 }       /*(* (tuple type, k>=2) *)*/
+| SP_LEFT_BRACKET typ SP_RIGHT_BRACKET  { TY.ListAT $2 }        /*(* (list type) *)*/
+| SP_LEFT_PAREN typ SP_RIGHT_PAREN  { TY.AT $2 }        /*(* (parenthesized constructor) *)*/
 ;
 
 typ_tupple_list:

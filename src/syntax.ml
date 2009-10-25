@@ -707,33 +707,38 @@ struct
     BT (ConsAT (Qtycon tycon_id))
 
   let maybe_class tycon tyvar =
-    TT (AppBT (simple_btype tycon, VarAT tyvar))
+    AppBT (simple_btype tycon, VarAT tyvar)
 
-  let maybe_paren_class typ =
-    TT (BT (AT typ))
+  let maybe_paren_class btype =
+    AT (TT btype)
 
   let destruct_for_class =
     function
-      | TT (AppBT (BT (ConsAT (Qtycon tycon)), VarAT tyvar)) ->
+      | AppBT (BT (ConsAT (Qtycon tycon)), VarAT tyvar) ->
           (tycon, tyvar)
       | _ ->
           failwith "Type structure not applicable class."
 
   let destruct_for_paren_class =
     function
-      | TT (BT (AT typ)) ->
-          destruct_for_class typ
+      | AT (TT btype) ->
+          destruct_for_class btype
       | _ ->
-          failwith "Type structure not applicable class."
+          failwith "Type structure not applicable paren class."
 
-  let maybe_classlist typ_list =
-    TT (BT (TupleAT typ_list))
+  let maybe_classlist btype_list =
+    TupleAT (List.map (fun btype -> TT btype) btype_list)
 
+  let destruct_typ =
+    function
+      | TT (btype) -> btype
+      |  _ ->
+           failwith "Type is not normal type. (may be function type)"
 
   let destruct_for_classlist =
     function
-      | TT (BT (TupleAT typ_list)) ->
-          List.map (fun typ -> destruct_for_class typ) typ_list
+      | TupleAT typ_list ->
+          List.map (fun typ -> destruct_for_class (destruct_typ typ)) typ_list
       | _ ->
           failwith "Type structure not applicable class list."
 
