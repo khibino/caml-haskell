@@ -21,3 +21,11 @@ let intern_to tbl name =
 let globalTable = create_table ()
 
 let intern name = intern_to globalTable name
+
+let print ppf sym = Format.fprintf ppf "<symbol:%s>" (name sym)
+
+let dump_table tab =
+  H.iter (fun k _ -> print_endline k) tab
+
+let dump () =
+  dump_table globalTable

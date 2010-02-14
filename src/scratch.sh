@@ -9,4 +9,4 @@ if [ x$EMACS = x ]; then
 	rl=rlwrap
 fi
 
-$rl ocaml str.cma -I `ocamlfind query extlib` extLib.cma scratch.cma
+$rl ocaml -init scratchInit.ml str.cma  -I `ocamlfind query extlib` extLib.cma scratch.cma

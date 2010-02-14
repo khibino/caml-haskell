@@ -100,7 +100,7 @@ module_top:
   K_MODULE modid export_list K_WHERE body { ($2, $3, $5) }
 | K_MODULE modid K_WHERE body         { ($2, [], $4) }
 | body { (I.idwul S.the_main_symbol,
-          [M.EVar (I.idwul (I.make_qual_id S.the_main_name "main"))],
+          [M.EVar (I.idwul (I.qualid S.the_main_symbol S.the_entry_main_symbol))],
           $1) }
 ;
 
@@ -109,7 +109,7 @@ module_prefix:
   K_MODULE modid export_list K_WHERE { ($2, $3) }
 | K_MODULE modid K_WHERE             { ($2, []) }
 | { (I.idwul S.the_main_symbol,
-     [M.EVar (I.idwul (I.make_qual_id S.the_main_name "main"))]) }
+     [M.EVar (I.idwul (I.qualid S.the_main_symbol S.the_entry_main_symbol))]) }
 ;
 */
 

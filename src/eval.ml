@@ -25,27 +25,10 @@ module E = SYN.Expression
 
 type e_module_type = (ID.symwl * M.export list * (M.impdecl list * E.t D.top list))
 
-(* プログラム全体 - プログラムはモジュールの集合 *)
-type 'module_e program_buffer = {
-  pdata_assoc : (string, 'module_e PD.t) SAH.t;
-}
-
-let lastLoadProgram : e_module_type program_buffer option ref = ref None
-
-let load_program pdata_queue =
-  let pa = SAH.create
-    (fun x -> "Already loaded module: " ^ x)
-    (fun k pd -> (S.name pd.PD.local_module.PD.symbol))
-  in
-  let _ = Q.iter (fun pdata -> SAH.add pa (S.name pdata.PD.local_module.PD.symbol) pdata) pdata_queue in
-  let prog = { pdata_assoc = pa; } in
-  let _ = (lastLoadProgram := Some prog) in
-    prog
-
 type 'module_e lambda = {
   arg_pat_list : P.pat list;
   body : E.t;
-  env : 'module_e env_t;
+  lambda_env : 'module_e env_t;
   apply_where : ('module_e env_t -> 'module_e env_t);
 }
 
@@ -63,6 +46,8 @@ and 'module_e value =
   | Tuple of ('module_e thunk_type list)
   | List of ('module_e thunk_type list)
   | Closure of ('module_e closure * int * E.aexp list)
+  | UnqualVal of (Symbol.t * 'module_e value)
+  | UnqualAmb of (Symbol.t * 'module_e value) list
 
 
 and 'module_e thunk_type = unit -> 'module_e value
@@ -74,24 +59,26 @@ and 'module_e pre_value =
 
 
 (* あるスコープでの環境 *)
-and 'module_e eval_buffer = {
-  sym_tab : (ID.id, 'module_e thunk_type) H.t;
-  program : 'module_e program_buffer;
+and 'module_e env_t = {
+  symtabs : ((S.t, 'module_e thunk_type) H.t) list;
+  (* program : 'module_e program_buffer; *)
 }
 
-and 'module_e env_t = 'module_e eval_buffer list
+(* and 'module_e eval_buffer = 'module_e env_t *)
 
+let create_symtab () = H.create 32
 
 (* let gPrelude = ref (Some "Prelude") *)
 (* The first Syntax.ParseBuffer.t used when loading Prelude.hs *)
 (* let gPreludeBuf = PBuf.create () *)
-let simple_cons name = Cons (ID.make_id "Prelude" name, [])
+
+let simple_cons name = Cons (ID.qualid SYN.the_prelude_symbol (S.intern name), [])
 
 let valTrue  = simple_cons "True"
 let valFalse = simple_cons "False"
 
 let primTable = 
-  let table : (string, e_module_type value) H.t = H.create 32 in
+  let table : (string, e_module_type value) H.t = create_symtab () in
   let raise_type_err name msg =
     failwith (F.sprintf "Primitive argument type error: %s: %s" name msg) in
 
@@ -108,7 +95,7 @@ let primTable =
                                begin
                                  match (x, y) with
                                      (SYN.Int (xi), SYN.Int (yi)) -> 
-                                       (* F.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi); *)
+                                       F.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi);
                                        Literal (SYN.Int (i64f xi yi))
                                    | (SYN.Int (xi), SYN.Float (yf)) -> Literal (SYN.Float (floatf (Int64.to_float xi) yf))
                                    | (SYN.Float (xf), SYN.Int (yi)) -> Literal (SYN.Float (floatf xf (Int64.to_float yi)))
@@ -180,25 +167,132 @@ let primTable =
 
 
 
-let eval_buffer_create prog =
-  { sym_tab = H.create 32; 
-    program = prog; }
+(* let eval_buffer_create prog = *)
+let env_create pd : 'module_e env_t = {
+  symtabs = [ create_symtab () ];
+  (* program = pd; *)
+}
 
-let env_top env = L.hd env
+(* let env_top env = L.hd env *)
 
-let env_top_symtab env = (env_top env).sym_tab
+let env_tablist env = env.symtabs
+let env_symtab env = L.hd (env_tablist env)
+let env_top_symtab env = L.hd (L.rev (env_tablist env))
 
-let env_create pd : 'module_e env_t =
-  (eval_buffer_create pd) :: []
+type import_module_t = (M.qual * S.t * S.t option * M.impspec option)
 
-let env_get_prelude env =
-  (SAH.find (env_top env).program.pdata_assoc "Prelude").PD.local_module
+(* モジュールの評価環境 *)
+type 'module_e module_buffer = {
+  code : 'module_e PD.t;
+  env : 'module_e env_t;
+  import_module : (S.t, import_module_t) H.t;
+}
+
+let module_buffer pd = {
+  code = pd;
+  env = env_create pd;
+  import_module = create_symtab ();
+  (* import = create_symtab (); *)
+}
+
+(* *)
+
+let module_code modbuf = modbuf.code
+let module_env modbuf = modbuf.env
+let module_import_module modbuf = modbuf.import_module
+(* let import_module modbuf = modbuf.import *)
+
+(* プログラム全体の評価環境 - プログラムはモジュールの集合 *)
+type 'module_e program_buffer = (S.t, 'module_e module_buffer) SaHt.t
+
+let program_module_buffer program modsym =
+  SaHt.find program modsym
+
+let qualified_sym q n =
+  S.intern ((S.name q) ^ "." ^ (S.name n))
+
+type 'module_e export_buffer = {
+  export_module : (S.t, bool) H.t;
+  export : (S.t, bool) H.t;
+}
+
+let export_buffer () = {
+  export_module = create_symtab ();
+  export = create_symtab ();
+}
+
+let export_export_module exbuf = exbuf.export_module
+let export_export exbuf = exbuf.export
+
+let lastLoadProgram : e_module_type program_buffer option ref = ref None
+
+let load_program pdata_queue =
+  let prog = SaHt.create
+    S.name
+    (fun _ -> "<mod>")
+    (fun x -> "Already loaded module: " ^ x)
+    (fun ks vs -> ks ^ " => " ^ vs)
+    "<program buffer>"
+  in
+  let _ = Q.iter (fun pdata -> SaHt.add prog (PD.local_module_sym pdata) (module_buffer pdata)) pdata_queue in
+  let _ = (lastLoadProgram := Some prog) in
+    prog
+
+(* let env_create pd : 'module_e env_t =
+  (eval_buffer_create pd) :: [] *)
 
 let local_env env =
-  let top = env_top env in
-  let n = H.copy top.sym_tab in
-(*   let n = H.create 32 in *)
-    { top with sym_tab = n } :: env
+  (* let top = env_top env in *)
+  let tab = env.symtabs in
+  let n = H.copy (L.hd tab) in
+    { symtabs = n :: tab }
+
+let debug = true
+
+let h_find err_fun =
+  if debug then
+    (fun ht k ->
+       if H.mem ht k then
+         H.find ht k
+       else
+         err_fun ())
+  else H.find
+
+let eval_sym_with_tab tab sym =
+  let err = (fun () -> failwith (F.sprintf "eval_sym: %s not found." (S.name sym))) in
+    h_find err tab sym
+
+let eval_id_with_env env id =
+  match ID.qual id with
+    | ID.Q m ->
+        eval_sym_with_tab (env_symtab env) (ID.long_sym id)
+    | _ ->
+        eval_sym_with_tab (env_symtab env) (ID.short_sym id)
+
+let bind_value_to_tab tab sym value =
+  H.add tab sym value
+
+let bind_thunk_to_env env id thunk =
+  match env_tablist env with
+    | [] -> failwith "empty env!!"
+    | symtab :: upper ->
+        let _ = (match (upper, ID.qual id) with
+                     (* bind module top-level scope symbol's with qualified name *)
+                     (* モジュールのトップレベルシンボルに束縛した値を修飾された名前にも束縛する *)
+                   | ([], ID.Unq _) -> H.add symtab (ID.long_sym id) thunk
+                   | _ -> ())
+        in
+        let _ = bind_value_to_tab symtab (ID.short_sym id) thunk in
+          thunk
+
+let global_value program modsym sym =
+  let top_tab = env_top_symtab (module_env (program_module_buffer program modsym)) in
+    eval_sym_with_tab top_tab (qualified_sym modsym sym)
+
+let bind_global_value program is_qual modsym sym value =
+  let top_tab = env_top_symtab (module_env (program_module_buffer program modsym)) in
+  let _ = if not is_qual then bind_value_to_tab top_tab sym value in 
+    bind_value_to_tab top_tab (qualified_sym modsym sym) value
 
 let mk_literal lit =
   Literal lit
@@ -206,7 +300,7 @@ let mk_literal lit =
 let mk_lambda env pat_list exp where_env_fun =
   { arg_pat_list = pat_list;
     body = exp;
-    env = env;
+    lambda_env = env;
     apply_where = where_env_fun }
 
 let mk_single_closure env pat_list exp where_env_fun =
@@ -253,26 +347,6 @@ let applyClosureStack : e_module_type value Stack.t = Stack.create ()
 (* let eval_arg_exp = dummy_eval_arg_exp *)
 
 
-let debug = true
-
-let h_find err_fun =
-  if debug then
-    (fun ht k ->
-       if H.mem ht k then
-         H.find ht k
-       else
-         err_fun ())
-  else H.find
-
-let eval_id env id =
-  h_find
-    (fun () -> failwith (F.sprintf "eval_id: %s not found." (ID.name_str id)))
-    (env_top_symtab env) id
-
-let bind_thunk env id thunk =
-  let _ = H.add (env_top_symtab env) id thunk in
-    thunk
-
 let thunk_value thunk =
   match thunk with
       Thunk (f) -> f ()
@@ -317,11 +391,11 @@ and bind_pat_with_thunk pat =
 
       | P.VarP (id, _) ->
           (fun env thunk ->
-             let _ = bind_thunk env id thunk in (true, [thunk]))
+             let _ = bind_thunk_to_env env id thunk in (true, [thunk]))
 
       | P.AsP ((id, _), pat) ->
           (fun env thunk ->
-             let (_, (matchp, tlist)) = (bind_thunk env id thunk,
+             let (_, (matchp, tlist)) = (bind_thunk_to_env env id thunk,
                                          bind_pat_with_thunk pat env thunk)
              in (matchp, thunk :: tlist))
 
@@ -427,7 +501,7 @@ and apply_closure caller_env closure arg =
                     begin
                       match clo with
                         | SPat (lambda) ->
-                            let loc_env = local_env lambda.env in
+                            let loc_env = local_env lambda.lambda_env in
                               if (L.fold_left2
                                     (fun matchp pat arg_exp ->
                                        if matchp then let (matchp, _) = pattern_match_arg_exp loc_env pat caller_env arg_exp in matchp
@@ -440,18 +514,18 @@ and apply_closure caller_env closure arg =
 
                         | MPat (lambda_list) ->
                             L.fold_left
-                              (fun result lmd ->
+                              (fun result lambda ->
                                  match result with
                                    | Bottom ->
-                                       let loc_env = local_env lmd.env in
+                                       let loc_env = local_env lambda.lambda_env in
                                          if (L.fold_left2
                                                (fun matchp pat arg_exp ->
                                                   if matchp then let (matchp, _) = pattern_match_arg_exp loc_env pat caller_env arg_exp in matchp
                                                   else false)
                                                true
-                                               lmd.arg_pat_list
+                                               lambda.arg_pat_list
                                                arg_exp_list)
-                                         then eval_exp (lmd.apply_where loc_env) lmd.body
+                                         then eval_exp (lambda.apply_where loc_env) lambda.body
                                          else failwith "apply_closure: all multi pattern not match"
                                    | result -> result)
                               Bottom
@@ -473,7 +547,7 @@ and eval_arg_exp env =
             H.find primTable (ID.name_str id)
           else
             (* let _ = print_endline (ID.name_str id) in *)
-            let thunk = eval_id env id in
+            let thunk = eval_id_with_env env id in
               thunk ()
         end
 
@@ -528,8 +602,9 @@ and eval_exp env =
 
            | E.IfE (pre_e, then_e, else_e) -> 
                (match (eval_exp env pre_e) with
-                    Cons(id, []) when (ID.name_str id) = "True" -> eval_exp env then_e
-                  | Cons(id, []) when (ID.name_str id) = "False" -> eval_exp env else_e
+                  | Cons(id, []) when (ID.long_sym id) == SYN.bool_long_true  -> eval_exp env then_e
+                  | Cons(id, []) when (ID.long_sym id) == SYN.bool_long_false -> eval_exp env else_e
+                  | Cons(id, []) -> failwith (F.sprintf "exp: if: Type error %s" (S.name (ID.long_sym id)))
                   | x  -> failwith (F.sprintf "exp: if: Type error %s" (Std.dump x)))
            | E.CaseE (exp, []) ->
                Bottom
@@ -584,7 +659,7 @@ and eval_func_def env deflist =
                            deflist) in
     begin
       match sym_opt with
-          Some (sym, arity) -> let _ = bind_thunk env sym (make_thawed (Closure (MPat (L.rev revr), arity, []))) in ()
+          Some (sym, arity) -> let _ = bind_thunk_to_env env sym (make_thawed (Closure (MPat (L.rev revr), arity, []))) in ()
         | None -> failwith "decl: Bug function def is null list."
     end
 
@@ -633,29 +708,135 @@ let eval_topdecl env tdecl =
           let _ = eval_decl env d in
             Some d
 
-let eval_module env =
+let eval_export exbuf env =
+  let (modex, ex) =
+    (export_export_module exbuf,
+     export_export exbuf) in
+    function
+      | M.EVar (id, _) ->
+          H.add ex (ID.long_sym id) true
+      | M.ECons ((id, _), M.List labels) ->
+          H.add ex (ID.long_sym id) true
+      | M.ECons ((id, _), M.All) ->
+          H.add ex (ID.long_sym id) true
+      | M.EClass ((id, _), M.List labels) ->
+          H.add ex (ID.long_sym id) true
+      | M.EClass ((id, _), M.All) ->
+          H.add ex (ID.long_sym id) true
+      | M.EMod (modsym, _) ->
+          H.add modex modsym true
+
+(*
+let eval_import imp_map env =
   function
-      (modid, export_list, (import_list, topdecl_list)) ->
-        let _ = List.map (eval_topdecl env) topdecl_list in ()
+    | M.IVar (id, _) -> ()
+    | M.ICons ((id, _), M.List labels) -> ()
+    | M.ICons ((id, _), M.All) -> ()
+    | M.IClass ((id, _), M.List labels) -> ()
+    | M.IClass ((id, _), M.All) -> ()
+
+let eval_impspec imp_map env =
+  function
+    | (M.Imp impl| M.Hide impl) -> L.map (eval_import map_pair env) impl
+*)
+
+let eval_impdecl imp_map env =
+  function
+    | M.IDec (q, (modid, _), Some (modas, _), imps) ->
+        let mimp = (q, modid, Some modas, imps) in
+        let _ = (H.add imp_map modid mimp, H.add imp_map modas mimp) in
+          ()
+    | M.IDec (q, (modid, _), None, imps) ->
+        H.add imp_map modid (q, modid, None, imps)
+    | M.IEmpty -> ()
+
+let eval_module exbuf modbuf =
+  let env = module_env modbuf in
+    match module_code modbuf with
+        { PD.syntax = (modid, export_list, (import_list, topdecl_list)); } ->
+          let _ = L.map (eval_export exbuf env) export_list in
+          let _ = L.map (eval_impdecl (module_import_module modbuf) env) import_list in
+          let _ = L.map (eval_topdecl env) topdecl_list in
+            exbuf
+
+let check_export exbuf modsym program =
+  true
+
+let check_export_module exbuf modsym program =
+  (SaHt.mem program modsym) || (H.mem (export_export_module exbuf) modsym)
+
+(*
+let resolv_import_in_mod exbuf =
+  function
+      (qual, modsym, as_sym_opt, impspec) -> ()
+*)
+
+let resolv_import_symbol env imp_mod_sym ex_mod_sym is_qual program =
+  function
+    | M.IVar ({ ID.qual = ID.Unq m; ID.short = ID.N sym }, _) ->
+        bind_global_value
+          program is_qual imp_mod_sym sym
+          (global_value program ex_mod_sym sym)
+    | _ -> ()
+
+let resolv_import exbuf modbuf program =
+  H.iter
+    (fun name (qual, modsym, as_sym_opt, impspec) ->
+       let _ = (if not (check_export_module exbuf modsym program) then
+                  failwith (F.sprintf "Module '%s' not exported." (S.name modsym)))
+       in
+       let is_qual =
+         (match qual with
+            | M.NotQual -> false
+            | M.Qual    -> true)
+       in
+       let imp_mod_sym =
+         (match as_sym_opt with
+            | Some m -> m
+            | None -> modsym)
+       in
+         match impspec with
+           | Some (M.Imp  impls) ->
+               let _ = L.map
+                 (fun imp ->
+                    resolv_import_symbol (module_env modbuf) imp_mod_sym modsym is_qual program imp)
+                 impls
+               in ()
+           | Some (M.Hide impls) -> ()
+           | None ->  (* module import *) ()
+    )
+    (module_import_module modbuf)
 
 (* eval_program : 
    全ての module を thunk tree に変換した後で
    toplevel環境 main シンボルに束縛されている thunk を展開 *)
-let eval_program env program =
-  let _ =
-    SAH.iter
-      (fun name pd ->
+let eval_program program =
+  let exbuf = export_buffer () in
+  let exbuf =
+    SaHt.fold
+      (fun name modbuf exbuf ->
          (* if name = "Prelude" then () else *)
-         eval_module env pd.PD.syntax)
-      program.pdata_assoc
+         (* eval_module exbuf env modbuf.code.PD.syntax *)
+         eval_module exbuf modbuf)
+      program
+      exbuf
   in
-    eval_arg_exp env (E.VarE (ID.idwul (ID.make_id "Main" "main")))
-
+  let _ =
+    SaHt.iter
+      (fun name modbuf ->
+         resolv_import exbuf modbuf program)
+      program
+  in
+    (eval_id_with_env
+       (module_env (program_module_buffer program SYN.the_main_symbol))
+       (ID.qualid
+          SYN.the_main_symbol
+          SYN.the_entry_main_symbol)) ()
 
 (*  *)
 let eval_test fn =
   let prog = load_program (LO.parse_files_with_prelude [fn]) in
-    eval_program (env_create prog) prog
+    eval_program prog
 
 (*
   SAH.find (Eval.load_program (Eval.LO.parse_files_with_prelude [fn])).Eval.pdata_assoc.Eval "Main"

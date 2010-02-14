@@ -7,3 +7,6 @@ type table
 val name  : t -> string
 val intern: string -> t
 
+val print: Format.formatter -> t -> unit
+
+val dump: unit -> unit

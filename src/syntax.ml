@@ -44,8 +44,16 @@ let tclass_context_str =
 let the_prelude_name = "Prelude"
 let the_prelude_symbol = Sym.intern the_prelude_name
 
+(* let bool_true = Sym.intern "True" *)
+let bool_long_true = Sym.intern "Prelude.True"
+(* let bool_false = Sym.intern "False" *)
+let bool_long_false = Sym.intern "Prelude.False"
+
+
 let the_main_name = "Main"
 let the_main_symbol = Sym.intern the_main_name
+let the_entry_main_name = "main"
+let the_entry_main_symbol = Sym.intern the_entry_main_name
 
 type literal =
     Int of (int64)
@@ -64,6 +72,7 @@ let must_be_int li err =
       (Int (i64), _) -> Int64.to_int i64
     | _ -> failwith err
 
+(*
 module ModuleKey =
 struct
   type t = string option ref
@@ -77,12 +86,13 @@ struct
       | None -> failwith "ModuleKey.str called with not named local module!"  (* "<local>" *)
 
 end
+*)
 
 module ParseBuffer =
 struct
   module H = Hashtbl
   module SAH = SaHashtbl
-  module MKEY = ModuleKey
+  (* module MKEY = ModuleKey *)
 
   let debugFlag = ref false  (* Syntax.ParseBuffer.debugFlag := true *)
   let debug_out s =
@@ -313,26 +323,41 @@ struct
 
   type id = {
     short : short;
-    qual : qualifier;
+    qual  : qualifier;
   }
+
+  let short id = id.short
+  let qual  id = id.qual
+
+  let short_sym id =
+    match short id with
+      | N n -> n
+      | Sp sp -> S.intern (sp_con_str sp)
+
+  let qual_sym id =
+    match qual id with
+      | Q m | Unq m -> m
+
+  let long_sym id =
+    S.intern ((S.name (qual_sym id)) ^ "."
+              ^ (S.name (short_sym id)))
+
+  let to_sym id =
+    match qual id with
+      | Q (_) -> long_sym id
+      | _ -> short_sym id
 
   type idwl = (id * T.loc)
   type symwl = (Symbol.t * T.loc)
 
-(*
-  let make_id_core n q = {
-    name = n;
-    qual = q;
-  }
-*)
 
-  let make_qual_id_with_sym n q =
+  let qualid q n =
     { short = N n;
       qual  = Q q;
     }
 
   let make_qual_id n q =
-    make_qual_id_with_sym (S.intern n) (S.intern q)
+    qualid (S.intern q) (S.intern n)
 
       (* Q ({ name = n; qual = q; }) *)
 
@@ -340,22 +365,23 @@ struct
   let make_local_id n = 
     make_id_core n (Qual (PBuf.local_module_key ()))
 *)
-
-  let make_unqual_id_with_sym n m =
+  let unqualid n m = 
     { short = N   n;
       qual  = Unq m;
     }
 
   let make_unqual_id n m =
-    make_unqual_id_with_sym (S.intern n) (S.intern m)
+    unqualid (S.intern n) (S.intern m)
 
   let make_unqual_id_on_parse n =
-    make_unqual_id_with_sym
+    unqualid
       (S.intern n)
       (PBuf.find_local_module ()).PBuf.symbol
 
+(*
   let make_id modid n = 
     make_qual_id n modid
+*)
 
   let make_sp con =
     { short = Sp con;
@@ -386,7 +412,7 @@ struct
       | (N n, _) (* (N n, Unq m) *) -> S.name n
 (*       | (_, _) -> failwith "symbol name string unknown case." *)
 
-  let make_id_with_mod iwm = make_id iwm.T.modid iwm.T.id
+  let make_id_with_mod iwm = make_qual_id iwm.T.modid iwm.T.id
 
   let make_idwl_with_mod (iwm, loc) = idwl (make_id_with_mod iwm) loc
 
@@ -417,7 +443,7 @@ struct
       | None     -> false
       | Some _   ->
           let m = PBuf.find_local_module () in
-            class_p_with_mod m (make_qual_id_with_sym m.PBuf.symbol (S.intern sym))
+            class_p_with_mod m (qualid m.PBuf.symbol (S.intern sym))
             (* FIXME unqualified symbol may be defined by Prelude *)
     
   let class_p id =
@@ -448,7 +474,7 @@ end
 module ParsedData =
 struct
   module H = Hashtbl
-  module MKEY = ModuleKey
+  (* module MKEY = ModuleKey *)
   module SAH = SaHashtbl
   module PBuf = ParseBuffer
   module ID = Identifier
@@ -508,6 +534,8 @@ struct
             if m == lm.symbol then lm
             else SAH.find pd.module_assoc (Sym.name m)
 (*       failwith ("module " ^ modid ^" not found.") *)
+
+  let local_module_sym pd = pd.local_module.symbol
 
   let id_op_def (pd, pre_pd) id =
     let (m, op) = (get_module_data pd id, ID.name_str id) in
@@ -1022,7 +1050,7 @@ struct
     VarE (ID.idwul ((PD.qual_fun pd) name))
 *)
   let make_prelude_var_exp name =
-    VarE (ID.idwul (ID.make_qual_id_with_sym (Sym.intern name) the_prelude_symbol))
+    VarE (ID.idwul (ID.qualid the_prelude_symbol (Sym.intern name)))
 
 end
 

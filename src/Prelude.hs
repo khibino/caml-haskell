@@ -1,5 +1,5 @@
 module Prelude (
-    module PreludeList, module PreludeText, module PreludeIO,
+--    module PreludeList, module PreludeText, module PreludeIO,
     Bool(False, True),
     Maybe(Nothing, Just),
     Either(Left, Right),
@@ -41,12 +41,12 @@ module Prelude (
     seq, ($!)
   ) where
 
-import PreludeBuiltin                      -- Contains all `prim' values
-import UnicodePrims( primUnicodeMaxChar )  -- Unicode primitives
-import PreludeList
-import PreludeText
-import PreludeIO
-import Ratio( Rational )
+-- import PreludeBuiltin                      -- Contains all `prim' values
+-- import UnicodePrims( primUnicodeMaxChar )  -- Unicode primitives
+-- import PreludeList
+--  import PreludeText
+-- import PreludeIO
+-- import Ratio( Rational )
 
 infixr 9  .
 infixr 8  ^, ^^, **
