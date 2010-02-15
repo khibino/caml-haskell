@@ -1,6 +1,6 @@
 
 let _ =
-  try 
+  (* try  *)
     Eval.eval_test Sys.argv.(1)
-  with
-    | e -> Symbol.dump (); raise e
+  (* with *)
+(*     | e -> Symbol.dump (); raise e *)

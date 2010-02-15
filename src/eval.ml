@@ -46,9 +46,6 @@ and 'module_e value =
   | Tuple of ('module_e thunk_type list)
   | List of ('module_e thunk_type list)
   | Closure of ('module_e closure * int * E.aexp list)
-  | UnqualVal of (Symbol.t * 'module_e value)
-  | UnqualAmb of (Symbol.t * 'module_e value) list
-
 
 and 'module_e thunk_type = unit -> 'module_e value
 
@@ -57,11 +54,12 @@ and 'module_e pre_value =
     Thunk of (unit -> 'module_e value)
   | Thawed of 'module_e value
 
+and 'module_e scope_t = (S.t, 'module_e thunk_type) H.t
 
 (* あるスコープでの環境 *)
 and 'module_e env_t = {
-  symtabs : ((S.t, 'module_e thunk_type) H.t) list;
-  (* program : 'module_e program_buffer; *)
+  symtabs : ('module_e scope_t) list;
+  gscope : 'module_e scope_t;
 }
 
 (* and 'module_e eval_buffer = 'module_e env_t *)
@@ -76,6 +74,17 @@ let simple_cons name = Cons (ID.qualid SYN.the_prelude_symbol (S.intern name), [
 
 let valTrue  = simple_cons "True"
 let valFalse = simple_cons "False"
+
+let prim_trace =
+  let trace =
+    try
+      Sys.getenv "TRACE"
+    with
+        Not_found -> ""
+  in
+    match trace with
+      | "" | "0" -> (fun _ -> ())
+      | _        -> (fun s -> prerr_endline ("TRACE: " ^ s))
 
 let primTable = 
   let table : (string, e_module_type value) H.t = create_symtab () in
@@ -95,7 +104,7 @@ let primTable =
                                begin
                                  match (x, y) with
                                      (SYN.Int (xi), SYN.Int (yi)) -> 
-                                       F.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi);
+                                       prim_trace (F.sprintf "called '%s' with %s %s" name (Int64.to_string xi) (Int64.to_string yi));
                                        Literal (SYN.Int (i64f xi yi))
                                    | (SYN.Int (xi), SYN.Float (yf)) -> Literal (SYN.Float (floatf (Int64.to_float xi) yf))
                                    | (SYN.Float (xf), SYN.Int (yi)) -> Literal (SYN.Float (floatf xf (Int64.to_float yi)))
@@ -122,7 +131,7 @@ let primTable =
                                  begin
                                    match (x, y) with
                                        (SYN.Int (xi), SYN.Int (yi)) ->
-                                         (* F.printf "DEBUG: called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi); *)
+                                         prim_trace (F.sprintf "called '%s' with %s %s\n" name (Int64.to_string xi) (Int64.to_string yi));
                                          i64f xi yi
                                      | (SYN.Int (xi), SYN.Float (yf)) -> floatf (Int64.to_float xi) yf
                                      | (SYN.Float (xf), SYN.Int (yi)) -> floatf xf (Int64.to_float yi)
@@ -168,16 +177,20 @@ let primTable =
 
 
 (* let eval_buffer_create prog = *)
-let env_create pd : 'module_e env_t = {
-  symtabs = [ create_symtab () ];
-  (* program = pd; *)
-}
+let env_create pd : 'module_e env_t =
+  let top = create_symtab () in
+    {
+      symtabs = [ top ];
+      gscope = top;
+    }
 
 (* let env_top env = L.hd env *)
 
 let env_tablist env = env.symtabs
 let env_symtab env = L.hd (env_tablist env)
-let env_top_symtab env = L.hd (L.rev (env_tablist env))
+let env_top_symtab env =
+  (* L.hd (L.rev (env_tablist env)) *)
+  env.gscope
 
 type import_module_t = (M.qual * S.t * S.t option * M.impspec option)
 
@@ -242,10 +255,9 @@ let load_program pdata_queue =
   (eval_buffer_create pd) :: [] *)
 
 let local_env env =
-  (* let top = env_top env in *)
   let tab = env.symtabs in
   let n = H.copy (L.hd tab) in
-    { symtabs = n :: tab }
+    { env with symtabs = n :: tab }
 
 let debug = true
 
@@ -265,9 +277,14 @@ let eval_sym_with_tab tab sym =
 let eval_id_with_env env id =
   match ID.qual id with
     | ID.Q m ->
-        eval_sym_with_tab (env_symtab env) (ID.long_sym id)
+        (* eval_sym_with_tab (env_symtab env) (ID.long_sym id) *)
+        (* let _ = F.printf "DEBUG: Qual %s\n" (S.name (ID.long_sym id)) in *)
+        eval_sym_with_tab (env_top_symtab env) (ID.long_sym id)
     | _ ->
-        eval_sym_with_tab (env_symtab env) (ID.short_sym id)
+        (* let _ = F.printf "DEBUG: Unqu %s\n" (S.name (ID.long_sym id)) in *)
+        let short = (ID.short_sym id) in
+        let lenv  = (env_symtab env) in
+          eval_sym_with_tab lenv short
 
 let bind_value_to_tab tab sym value =
   H.add tab sym value
@@ -277,20 +294,26 @@ let bind_thunk_to_env env id thunk =
     | [] -> failwith "empty env!!"
     | symtab :: upper ->
         let _ = (match (upper, ID.qual id) with
-                     (* bind module top-level scope symbol's with qualified name *)
-                     (* モジュールのトップレベルシンボルに束縛した値を修飾された名前にも束縛する *)
-                   | ([], ID.Unq _) -> H.add symtab (ID.long_sym id) thunk
+                   | ([], ID.Unq _) ->
+                       (* bind module top-level scope symbol's with qualified name *)
+                       (* モジュールのトップレベルシンボルに束縛した値を修飾された名前にも束縛する *)
+                       (* let _ = F.printf "DEBUG: bind(long) %s\n" (S.name (ID.long_sym id)) in *)
+                       H.add symtab (ID.long_sym id) thunk
                    | _ -> ())
         in
+        (* let _ = F.printf "DEBUG: bind(short) %s\n" (S.name (ID.short_sym id)) in *)
         let _ = bind_value_to_tab symtab (ID.short_sym id) thunk in
           thunk
 
+let module_top_tab program modsym =
+  env_top_symtab (module_env (program_module_buffer program modsym))
+
 let global_value program modsym sym =
-  let top_tab = env_top_symtab (module_env (program_module_buffer program modsym)) in
+  let top_tab = module_top_tab program modsym in
     eval_sym_with_tab top_tab (qualified_sym modsym sym)
 
-let bind_global_value program is_qual modsym sym value =
-  let top_tab = env_top_symtab (module_env (program_module_buffer program modsym)) in
+let bind_import_value env program is_qual modsym sym value =
+  let top_tab = env_top_symtab env in
   let _ = if not is_qual then bind_value_to_tab top_tab sym value in 
     bind_value_to_tab top_tab (qualified_sym modsym sym) value
 
@@ -552,7 +575,8 @@ and eval_arg_exp env =
         end
 
     | E.ConsE ((id, _)) ->
-        let v = Cons (id, []) in v
+        (* let v = Cons (id, []) in v *)
+        eval_id_with_env env id ()
          
     | E.LiteralE (lit, _) -> Literal lit
 
@@ -689,24 +713,36 @@ and eval_decl env =
           bpat pat
     | D.GenDecl gendecl -> eval_gendecl env gendecl
 
+
+let eval_data_simple env typ = 
+  function
+    | C.App ((id, _), [])   ->
+        let _ = bind_thunk_to_env env id (fun () -> (Cons (id, []))) in
+          ()
+    | C.App ((id, _), arity_ls)   ->
+        ()
+    | C.Op2 ((id, _), a1, a2)   -> ()
+    | C.Label (_) -> ()
+
 let (lastEvalDecl : E.t D.decl option ref) = ref None
 
 let eval_topdecl env tdecl =
-  lastEvalDecl :=
-    match tdecl with
-        D.Type (_) -> None
-      | D.Data (_) -> None
-      | D.NewType (_) -> None
-      | D.Class (_, _, _, cdecl_list) ->
-          let _ = L.map (fun cd -> eval_cdecl env cd) cdecl_list in
-            None
-      | D.Instance (_, _, _, idecl_list) ->
-          let _ = L.map (fun instd -> eval_idecl env instd) idecl_list in
-            None
-      | D.Default (_) -> None
-      | D.Decl d ->
-          let _ = eval_decl env d in
-            Some d
+  match tdecl with
+    | D.Type (_) -> ()
+    | D.Data (_, typ, cons_ls, _) ->
+        let _ = L.map (fun cons -> eval_data_simple env typ cons) cons_ls in
+          ()
+    | D.NewType (_) -> ()
+    | D.Class (_, _, _, cdecl_list) ->
+        let _ = L.map (fun cd -> eval_cdecl env cd) cdecl_list in
+          ()
+    | D.Instance (_, _, _, idecl_list) ->
+        let _ = L.map (fun instd -> eval_idecl env instd) idecl_list in
+          ()
+    | D.Default (_) -> ()
+    | D.Decl d ->
+        let _ = eval_decl env d in
+          lastEvalDecl := Some d
 
 let eval_export exbuf env =
   let (modex, ex) =
@@ -742,20 +778,27 @@ let eval_impspec imp_map env =
 
 let eval_impdecl imp_map env =
   function
-    | M.IDec (q, (modid, _), Some (modas, _), imps) ->
-        let mimp = (q, modid, Some modas, imps) in
-        let _ = (H.add imp_map modid mimp, H.add imp_map modas mimp) in
+    | M.IDec (q, (modsym, _), Some (modas, _), impls) ->
+        let mimp = (q, modsym, Some modas, impls) in
+        let _ = (H.add imp_map modsym mimp, H.add imp_map modas mimp) in
           ()
-    | M.IDec (q, (modid, _), None, imps) ->
-        H.add imp_map modid (q, modid, None, imps)
+    | M.IDec (q, (modsym, _), None, impls) ->
+        H.add imp_map modsym (q, modsym, None, impls)
     | M.IEmpty -> ()
 
 let eval_module exbuf modbuf =
   let env = module_env modbuf in
     match module_code modbuf with
-        { PD.syntax = (modid, export_list, (import_list, topdecl_list)); } ->
+        { PD.syntax = ((modsym, _), export_list, (import_list, topdecl_list)); } ->
           let _ = L.map (eval_export exbuf env) export_list in
-          let _ = L.map (eval_impdecl (module_import_module modbuf) env) import_list in
+          let imp_map = module_import_module modbuf in
+          let _ =
+            if modsym != SYN.the_prelude_symbol then
+              (* import Prelude *)
+              H.add imp_map SYN.the_prelude_symbol (M.NotQual, SYN.the_prelude_symbol, None, None)
+          in
+          let _ =
+            L.map (eval_impdecl imp_map env) import_list in
           let _ = L.map (eval_topdecl env) topdecl_list in
             exbuf
 
@@ -765,25 +808,30 @@ let check_export exbuf modsym program =
 let check_export_module exbuf modsym program =
   (SaHt.mem program modsym) || (H.mem (export_export_module exbuf) modsym)
 
-(*
-let resolv_import_in_mod exbuf =
-  function
-      (qual, modsym, as_sym_opt, impspec) -> ()
-*)
-
 let resolv_import_symbol env imp_mod_sym ex_mod_sym is_qual program =
   function
     | M.IVar ({ ID.qual = ID.Unq m; ID.short = ID.N sym }, _) ->
-        bind_global_value
-          program is_qual imp_mod_sym sym
+        bind_import_value
+          env program is_qual imp_mod_sym sym
           (global_value program ex_mod_sym sym)
     | _ -> ()
 
+let resolv_import_module env imp_mod_sym ex_mod_sym is_qual program =
+  let top_tab = module_top_tab program ex_mod_sym in
+    H.iter
+      (fun sym value ->
+         (* let _ = F.printf "DEBUG: import: mod %s imp %s ex %s sym %s\n"
+           (S.name imp_mod_sym) (S.name ex_mod_sym) (S.name sym) in *)
+         bind_import_value
+           env program is_qual imp_mod_sym sym
+           value)
+      top_tab
+
 let resolv_import exbuf modbuf program =
   H.iter
-    (fun name (qual, modsym, as_sym_opt, impspec) ->
-       let _ = (if not (check_export_module exbuf modsym program) then
-                  failwith (F.sprintf "Module '%s' not exported." (S.name modsym)))
+    (fun name (qual, ex_mod_sym, as_sym_opt, impspec) ->
+       let _ = (if not (check_export_module exbuf ex_mod_sym program) then
+                  failwith (F.sprintf "Module '%s' not exported." (S.name ex_mod_sym)))
        in
        let is_qual =
          (match qual with
@@ -793,17 +841,20 @@ let resolv_import exbuf modbuf program =
        let imp_mod_sym =
          (match as_sym_opt with
             | Some m -> m
-            | None -> modsym)
+            | None -> ex_mod_sym)
        in
+       let env = module_env modbuf in
          match impspec with
            | Some (M.Imp  impls) ->
                let _ = L.map
                  (fun imp ->
-                    resolv_import_symbol (module_env modbuf) imp_mod_sym modsym is_qual program imp)
+                    resolv_import_symbol env imp_mod_sym ex_mod_sym is_qual program imp)
                  impls
                in ()
            | Some (M.Hide impls) -> ()
-           | None ->  (* module import *) ()
+           | None ->
+               resolv_import_module env imp_mod_sym ex_mod_sym is_qual program
+                 (* (\* module import *\) () *)
     )
     (module_import_module modbuf)
 
