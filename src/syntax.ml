@@ -479,7 +479,7 @@ struct
   module PBuf = ParseBuffer
   module ID = Identifier
 
-  let debugFlag = ref true  (* Syntax.ParsedData.debugFlag := true *)
+  let debugFlag = ref false  (* Syntax.ParsedData.debugFlag := true *)
   let debug_out s =
     if !debugFlag then
       let _ = output_string stderr ("DEBUG: " ^ s ^ "\n") in

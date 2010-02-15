@@ -71,8 +71,10 @@ all_nat: scratch.cmxa lex0_main.nat loin_main.nat layout_main.nat parse_main.nat
 info:
 	echo "byte_libs = $(byte_libs)"
 
-test: clean all Prelude.lex0 Prelude.loin Prelude.layout Prelude.parse
-
+test: all Prelude.lex0 Prelude.loin Prelude.layout Prelude.parse
+	for hs in p pat tak0 tak1; do \
+		./eval_main.nat ../sample/$${hs}.hs; \
+	done
 
 .depends: $(mlis) $(sources)
 	$(ocamldep) $(sources) $(mlis) > $@
