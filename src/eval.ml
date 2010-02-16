@@ -94,6 +94,18 @@ let primTable =
   let mk_prim func arity = Closure (Prim (func), arity, []) in
   let bind_prim name prim = H.add table name prim in
 
+  let _ =
+    let cons = ":" in
+      bind_prim cons
+        (mk_prim
+           (function
+              | car :: cdr :: [] ->
+                  Cons ((ID.qualid SYN.the_prelude_symbol (S.intern ":")),
+                        [car; cdr])
+              | _ -> raise_type_err cons "Argument count is not 2.")
+         2)
+  in
+
   let def_eager_num_op2 name i64f floatf =
     bind_prim name
       (mk_prim (function
@@ -113,7 +125,7 @@ let primTable =
                                end
                            | _ -> raise_type_err name "Non-literal arguemnt found."
                        end
-                   | _ -> raise_type_err name "Argument count is not 2.") 2) in
+                  | _ -> raise_type_err name "Argument count is not 2.") 2) in
 
   let _ = (def_eager_num_op2 "+" Int64.add (+.),
            def_eager_num_op2 "-" Int64.sub (-.),
@@ -490,19 +502,27 @@ and bind_pat_with_thunk pat =
                   | _ -> false),
              [thunk])
 
-(*
     | P.Irref pat ->
+        failwith "pattern: Irref: Not implemented"
+(*
         (fun env thunk -> bind_pat_with_thunk pat env thunk)
 
     (*     | P.Pat0 of pat op2list_patf *)
     (*     | P.Pat1 of pat op2list_patf *)
-
-    | P.ConOp2P (id, pat1, pat2) ->
-        (fun env thunk -> let _ = (bind_pat_with_thunk pat1 env thunk, bind_pat_with_thunk pat2 env thunk) in thunk)
-
-    | _ -> failwith ("Not converted Pat0 or Pat1 found. parser BUG!!")
 *)
-    | _ -> failwith "Not impelmented"
+
+    | P.ConOp2P ((id, _), pat1, pat2) ->
+        (fun env thunk ->
+           let value = thunk () in
+             match value with
+                 Cons (cid, args) when cid = id
+                   -> sub_patterns_match env [pat1; pat2] args
+               | _ -> (false, [thunk]))
+
+    | P.Pat0 _ -> failwith ("Not converted Pat0 found. parser BUG!!")
+    | P.Pat1 _ -> failwith ("Not converted Pat1 found. parser BUG!!")
+
+    (* | _ -> failwith "pattern: Not implemented" *)
 
 (* pattern_match : thunk を pattern にマッチ *)
 and pattern_match local_env pat caller_env evalee =
@@ -721,7 +741,8 @@ let eval_data_simple env typ =
           ()
     | C.App ((id, _), arity_ls)   ->
         ()
-    | C.Op2 ((id, _), a1, a2)   -> ()
+    | C.Op2 ((id, _), a1, a2)   ->
+        ()
     | C.Label (_) -> ()
 
 let (lastEvalDecl : E.t D.decl option ref) = ref None

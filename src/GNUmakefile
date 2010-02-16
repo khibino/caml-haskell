@@ -60,6 +60,9 @@ nat_libs = extLib.cmxa $(scratch_nat_lib)
 %.eval: %.hs
 	./parse_eval.byte < $< > $@ 2>&1
 
+%.debug: ../sample/%.hs
+	OCAMLRUNPARAM=b ./eval_main.byte $< | 2>&1 tee $@
+
 all: all_byte all_nat
 
 all_byte: scratch.cma lex0_main.byte loin_main.byte layout_main.byte parse_main.byte fixity_main.byte eval_main.byte

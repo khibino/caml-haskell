@@ -671,25 +671,26 @@ rpati   ->      pati+1 qconop(r,i) (rpati | pati+1)
       | PatF (patAA, Op2F (op_aa_wl, (PatF (patBB, Op2End)))) ->
           ConOp2P (op_aa_wl, pat_fun patAA, pat_fun patBB)
       | PatF (patAA, Op2F ((op_aa, _) as op_aa_wl, ((PatF (patBB, Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
-          (let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
-           let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
-             match (aa_fixity, bb_fixity) with
-                 ((_, aa_i), _) when aa_i < min_i ->
-                   failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str aa_fixity))
-               | (_, (_, bb_i)) when bb_i < min_i ->
-                   failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str bb_fixity))
-               | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-                   scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa_wl, pat_fun patAA, pat_fun patBB), Op2F (op_bb_wl, rest)))
-               | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
-                   scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa_wl, pat_fun patAA, pat_fun patBB), Op2F (op_bb_wl, rest)))
-               | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-                   ConOp2P (op_aa_wl, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
-               | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
-                   ConOp2P (op_aa_wl, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
-               | _ ->
-                   failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
-                               (fixity_str aa_fixity)
-                               (fixity_str bb_fixity)))
+          ((* 演算子の優先順位を取得するために (current, prelude) as pdata を渡す *)
+            let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
+            let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
+              match (aa_fixity, bb_fixity) with
+                  ((_, aa_i), _) when aa_i < min_i ->
+                    failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str aa_fixity))
+                | (_, (_, bb_i)) when bb_i < min_i ->
+                    failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str bb_fixity))
+                | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
+                    scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa_wl, pat_fun patAA, pat_fun patBB), Op2F (op_bb_wl, rest)))
+                | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
+                    scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa_wl, pat_fun patAA, pat_fun patBB), Op2F (op_bb_wl, rest)))
+                | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
+                    ConOp2P (op_aa_wl, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
+                | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
+                    ConOp2P (op_aa_wl, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
+                | _ ->
+                    failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
+                                (fixity_str aa_fixity)
+                                (fixity_str bb_fixity)))
       | _ -> failwith "Arity 2 operator pattern syntax error."
 
 end
@@ -1121,22 +1122,23 @@ struct
       | E.ExpF (expAA, E.Op2F (op_aa, (E.ExpF (expBB, E.Op2End)))) ->
           E.VarOp2E (op_aa, scan_exp10 pdata expAA, scan_exp10 pdata expBB)
       | E.ExpF (expAA, E.Op2F ((op_aa, _) as op_aa_wl, ((E.ExpF (expBB, E.Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
-          (let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
-           let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
-             (* Printf.printf "(%s, %d) vs (%s, %d)\n" (ID.name_str op_aa) (snd aa_fixity) (ID.name_str op_bb) (snd bb_fixity); *)
-             match (aa_fixity, bb_fixity) with
-                 ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-                   scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa_wl, expAA, expBB), E.Op2F (op_bb_wl, rest)))
-               | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
-                   scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa_wl, expAA, expBB), E.Op2F (op_bb_wl, rest)))
-               | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-                   E.VarOp2E (op_aa_wl, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
-               | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
-                   E.VarOp2E (op_aa_wl, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
-               | _ ->
-                   failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
-                               (fixity_str aa_fixity)
-                               (fixity_str bb_fixity)))
+          ((* 演算子の優先順位を取得するために (current, prelude) as pdata を渡す *)
+            let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
+            let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
+              (* Printf.printf "(%s, %d) vs (%s, %d)\n" (ID.name_str op_aa) (snd aa_fixity) (ID.name_str op_bb) (snd bb_fixity); *)
+              match (aa_fixity, bb_fixity) with
+                  ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
+                    scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa_wl, expAA, expBB), E.Op2F (op_bb_wl, rest)))
+                | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
+                    scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa_wl, expAA, expBB), E.Op2F (op_bb_wl, rest)))
+                | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
+                    E.VarOp2E (op_aa_wl, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
+                | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
+                    E.VarOp2E (op_aa_wl, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
+                | _ ->
+                    failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
+                                (fixity_str aa_fixity)
+                                (fixity_str bb_fixity)))
       | _ -> failwith "Arity 2 operator expression syntax error."
 
   and scan_atom_exp pdata =
@@ -1187,11 +1189,12 @@ struct
 
   and op2_scan_funlhs pdata =
     function
-        D.Op2Fun (varop, (pat_aa, pat_bb)) ->
+        D.FunLV (var, pat_list) ->
+          D.FunLV (var, L.map (fun p -> op2_scan_pat pdata p) pat_list)
+      | D.Op2Fun (varop, (pat_aa, pat_bb)) ->
           D.Op2Fun (varop, (op2_scan_pat pdata pat_aa, op2_scan_pat pdata pat_bb))
       | D.NestDec (lhs, pat_list) ->
           D.NestDec (op2_scan_funlhs pdata lhs, L.map (fun p -> op2_scan_pat pdata p) pat_list)
-      | x -> x
 
   and op2_scan_guard pdata =
     function
