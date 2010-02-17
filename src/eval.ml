@@ -184,6 +184,17 @@ let primTable =
                          | v -> raise_type_err prim_print ("Non-literal arguemnt found. " ^ (Std.dump v))
                      end
                  | _ -> raise_type_err prim_print "Arguemnt not found.") 1) in
+
+  let prim_putStrLn = "putStrLn" in
+  let _ = bind_prim prim_putStrLn
+    (mk_prim (function
+                   th :: [] ->
+                     begin
+                       match th() with
+                         | Literal (SYN.String (m)) -> print_endline m; IO
+                         | v -> raise_type_err prim_print ("Non-literal arguemnt found. " ^ (Std.dump v))
+                     end
+                 | _ -> raise_type_err prim_print "Arguemnt not found.") 1) in
     table
 
 
