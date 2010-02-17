@@ -1128,9 +1128,9 @@ struct
               (* Printf.printf "(%s, %d) vs (%s, %d)\n" (ID.name_str op_aa) (snd aa_fixity) (ID.name_str op_bb) (snd bb_fixity); *)
               match (aa_fixity, bb_fixity) with
                   ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-                    scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa_wl, expAA, expBB), E.Op2F (op_bb_wl, rest)))
+                    scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa_wl, scan_exp10 pdata expAA, scan_exp10 pdata expBB), E.Op2F (op_bb_wl, rest)))
                 | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
-                    scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa_wl, expAA, expBB), E.Op2F (op_bb_wl, rest)))
+                    scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa_wl, scan_exp10 pdata expAA, scan_exp10 pdata expBB), E.Op2F (op_bb_wl, rest)))
                 | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
                     E.VarOp2E (op_aa_wl, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
                 | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
@@ -1140,6 +1140,15 @@ struct
                                 (fixity_str aa_fixity)
                                 (fixity_str bb_fixity)))
       | _ -> failwith "Arity 2 operator expression syntax error."
+
+(*
+  (* TODO: The same form section scan function *)
+  and scan_op2exp_rsec pdata rs_list =
+    match rs_list with
+        E.Op2End -> scan_exp10 pdata exp
+      | E.Op2F (op_aa, (E.ExpF (expBB, E.Op2End))) ->
+   ...
+*)
 
   and scan_atom_exp pdata =
     function
