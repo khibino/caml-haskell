@@ -69,17 +69,6 @@ let all_token_rev_list lexbuf =
        []
        (LST.create_stream (scan_start ()) scan_next eof_token_p))
 
-module SWL =
-struct
-  let get upper_levels =
-    match upper_levels with
-        [] -> ref []
-      | (_, prev_stk) :: _ -> prev_stk
-
-  let push tok stk =
-    stk := (tok :: (!stk))
-end
-
 let rec layout istream levels =
   let push_new_token tok lform =
     LST.Cons ((tok, new_err_flag ()), lform)
