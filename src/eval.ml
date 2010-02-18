@@ -49,7 +49,7 @@ and 'module_e value =
 
 and 'module_e thunk_type = unit -> 'module_e value
 
-and 'module_e pre_value =
+and 'module_e pre_value_t =
     (* Thunk of (P.pat * E.t * 'module_e env_t) *)
     Thunk of (unit -> 'module_e value)
   | Thawed of 'module_e value
