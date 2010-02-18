@@ -50,8 +50,7 @@ and value_t =
 and thunk_t = unit -> value_t
 
 and pre_value_t =
-    (* Thunk of (P.pat * E.t * env_t) *)
-    Thunk of (unit -> value_t)
+    Thunk of (unit -> value_t) (* thunk_t と同じ型になっているのは偶然であることに注意 *)
   | Thawed of value_t
 
 and scope_t = (S.t, thunk_t) H.t
@@ -409,6 +408,12 @@ let expand_thunk thunk_ref =
 let make_thawed value =
   (fun () -> value)
 
+(* TODO:
+   delay_fun が thunk_t と同じ型なのは偶然である。
+   取り違えに注意すべし。
+   将来的に取り違えが無いように別の型になるように直すと良い。
+*)
+
 let make_thunk eval_fun env evalee =
   let delay_fun = fun () -> (eval_fun env evalee) in
   let thunk_ref = ref (Thunk delay_fun) in
@@ -517,9 +522,6 @@ and bind_pat_with_thunk pat =
         failwith "pattern: Irref: Not implemented"
 (*
         (fun env thunk -> bind_pat_with_thunk pat env thunk)
-
-    (*     | P.Pat0 of pat op2list_patf *)
-    (*     | P.Pat1 of pat op2list_patf *)
 *)
 
     | P.ConOp2P ((id, _), pat1, pat2) ->
