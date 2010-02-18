@@ -59,7 +59,7 @@ and scope_t = (S.t, thunk_t) H.t
 (* あるスコープでの環境 *)
 and env_t = {
   symtabs : (scope_t) list;
-  gscope : scope_t;
+  top_scope : scope_t;
 }
 
 (* and eval_buffer = env_t *)
@@ -204,7 +204,7 @@ let env_create pd : env_t =
   let top = create_symtab () in
     {
       symtabs = [ top ];
-      gscope = top;
+      top_scope = top;
     }
 
 (* let env_top env = L.hd env *)
@@ -213,7 +213,7 @@ let env_tablist env = env.symtabs
 let env_symtab env = L.hd (env_tablist env)
 let env_top_symtab env =
   (* L.hd (L.rev (env_tablist env)) *)
-  env.gscope
+  env.top_scope
 
 type import_module_t = (M.qual * S.t * S.t option * M.impspec option)
 
