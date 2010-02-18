@@ -511,11 +511,11 @@ struct
     else (fun n -> ID.make_qual_id n (Sym.name pd.symbol))
 *)
 
-  type 'module_e t = {
+  type 'syntax_tree t = {
     module_assoc : (string, module_data) SAH.t;
     local_module : module_data;
 
-    syntax : 'module_e;
+    syntax : 'syntax_tree;
   }
 
   let module_to_string m =

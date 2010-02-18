@@ -23,46 +23,46 @@ module P = SYN.Pattern
 module E = SYN.Expression
 
 
-type e_module_t = (ID.symwl * M.export list * (M.impdecl list * E.t D.top list))
+type syntax_tree_t = (ID.symwl * M.export list * (M.impdecl list * E.t D.top list))
 
-type 'module_e lambda = {
+type 'syntax_tree lambda = {
   arg_pat_list : P.pat list;
   body : E.t;
-  lambda_env : 'module_e env_t;
-  apply_where : ('module_e env_t -> 'module_e env_t);
+  lambda_env : 'syntax_tree env_t;
+  apply_where : ('syntax_tree env_t -> 'syntax_tree env_t);
 }
 
-and 'module_e closure =
-  | SPat of ('module_e lambda)
-  | MPat of ('module_e lambda list)
-  | Prim of ('module_e thunk_t list -> 'module_e value)
+and 'syntax_tree closure =
+  | SPat of ('syntax_tree lambda)
+  | MPat of ('syntax_tree lambda list)
+  | Prim of ('syntax_tree thunk_t list -> 'syntax_tree value)
 
-and 'module_e value =
+and 'syntax_tree value =
   | Bottom
   | IO
   | Literal of SYN.literal
-  | Cons of (ID.id * ('module_e thunk_t list))
-  | LabelCons of (ID.id * (ID.id, 'module_e thunk_t) OH.t )
-  | Tuple of ('module_e thunk_t list)
-  | List of ('module_e thunk_t list)
-  | Closure of ('module_e closure * int * E.aexp list)
+  | Cons of (ID.id * ('syntax_tree thunk_t list))
+  | LabelCons of (ID.id * (ID.id, 'syntax_tree thunk_t) OH.t )
+  | Tuple of ('syntax_tree thunk_t list)
+  | List of ('syntax_tree thunk_t list)
+  | Closure of ('syntax_tree closure * int * E.aexp list)
 
-and 'module_e thunk_t = unit -> 'module_e value
+and 'syntax_tree thunk_t = unit -> 'syntax_tree value
 
-and 'module_e pre_value_t =
-    (* Thunk of (P.pat * E.t * 'module_e env_t) *)
-    Thunk of (unit -> 'module_e value)
-  | Thawed of 'module_e value
+and 'syntax_tree pre_value_t =
+    (* Thunk of (P.pat * E.t * 'syntax_tree env_t) *)
+    Thunk of (unit -> 'syntax_tree value)
+  | Thawed of 'syntax_tree value
 
-and 'module_e scope_t = (S.t, 'module_e thunk_t) H.t
+and 'syntax_tree scope_t = (S.t, 'syntax_tree thunk_t) H.t
 
 (* あるスコープでの環境 *)
-and 'module_e env_t = {
-  symtabs : ('module_e scope_t) list;
-  gscope : 'module_e scope_t;
+and 'syntax_tree env_t = {
+  symtabs : ('syntax_tree scope_t) list;
+  gscope : 'syntax_tree scope_t;
 }
 
-(* and 'module_e eval_buffer = 'module_e env_t *)
+(* and 'syntax_tree eval_buffer = 'syntax_tree env_t *)
 
 let create_symtab () = H.create 32
 
@@ -87,7 +87,7 @@ let prim_trace =
       | _        -> (fun s -> prerr_endline ("TRACE: " ^ s))
 
 let primTable = 
-  let table : (string, e_module_t value) H.t = create_symtab () in
+  let table : (string, syntax_tree_t value) H.t = create_symtab () in
   let raise_type_err name msg =
     failwith (F.sprintf "Primitive argument type error: %s: %s" name msg) in
 
@@ -200,7 +200,7 @@ let primTable =
 
 
 (* let eval_buffer_create prog = *)
-let env_create pd : 'module_e env_t =
+let env_create pd : 'syntax_tree env_t =
   let top = create_symtab () in
     {
       symtabs = [ top ];
@@ -218,9 +218,9 @@ let env_top_symtab env =
 type import_module_t = (M.qual * S.t * S.t option * M.impspec option)
 
 (* モジュールの評価環境 *)
-type 'module_e module_buffer = {
-  code : 'module_e PD.t;
-  env : 'module_e env_t;
+type 'syntax_tree module_buffer = {
+  code : 'syntax_tree PD.t;
+  env : 'syntax_tree env_t;
   import_module : (S.t, import_module_t) H.t;
 }
 
@@ -239,7 +239,7 @@ let module_import_module modbuf = modbuf.import_module
 (* let import_module modbuf = modbuf.import *)
 
 (* プログラム全体の評価環境 - プログラムはモジュールの集合 *)
-type 'module_e program_buffer = (S.t, 'module_e module_buffer) SaHt.t
+type 'syntax_tree program_buffer = (S.t, 'syntax_tree module_buffer) SaHt.t
 
 let program_module_buffer program modsym =
   SaHt.find program modsym
@@ -247,7 +247,7 @@ let program_module_buffer program modsym =
 let qualified_sym q n =
   S.intern ((S.name q) ^ "." ^ (S.name n))
 
-type 'module_e export_buffer = {
+type 'syntax_tree export_buffer = {
   export_module : (S.t, bool) H.t;
   export : (S.t, bool) H.t;
 }
@@ -260,7 +260,7 @@ let export_buffer () = {
 let export_export_module exbuf = exbuf.export_module
 let export_export exbuf = exbuf.export
 
-let lastLoadProgram : e_module_t program_buffer option ref = ref None
+let lastLoadProgram : syntax_tree_t program_buffer option ref = ref None
 
 let load_program pdata_queue =
   let prog = SaHt.create
@@ -274,7 +274,7 @@ let load_program pdata_queue =
   let _ = (lastLoadProgram := Some prog) in
     prog
 
-(* let env_create pd : 'module_e env_t =
+(* let env_create pd : 'syntax_tree env_t =
   (eval_buffer_create pd) :: [] *)
 
 let local_env env =
@@ -377,15 +377,15 @@ let dump_pattern p =
   lastErrPat := Some p;
   Std.dump p
 
-let applyClosureStack : e_module_t value Stack.t = Stack.create ()
+let applyClosureStack : syntax_tree_t value Stack.t = Stack.create ()
 
-(* let dummy_eval_exp (env : 'module_e env_t) (exp : E.t) =
+(* let dummy_eval_exp (env : 'syntax_tree env_t) (exp : E.t) =
   Bottom *)
 
-(* let dummy_eval_func_exp (env : 'module_e env_t) (fexp : E.fexp) =
+(* let dummy_eval_func_exp (env : 'syntax_tree env_t) (fexp : E.fexp) =
   Bottom *)
 
-(* let dummy_eval_arg_exp (env : 'module_e env_t) (aexp : E.aexp) =
+(* let dummy_eval_arg_exp (env : 'syntax_tree env_t) (aexp : E.aexp) =
   Bottom *)
 
 (* let eval_exp = dummy_eval_exp *)
