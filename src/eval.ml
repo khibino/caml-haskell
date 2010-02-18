@@ -25,16 +25,16 @@ module E = SYN.Expression
 
 type syntax_tree_t = (ID.symwl * M.export list * (M.impdecl list * E.t D.top list))
 
-type 'syntax_tree lambda = {
+type 'syntax_tree lambda_t = {
   arg_pat_list : P.pat list;
   body : E.t;
   lambda_env : 'syntax_tree env_t;
   apply_where : ('syntax_tree env_t -> 'syntax_tree env_t);
 }
 
-and 'syntax_tree closure =
-  | SPat of ('syntax_tree lambda)
-  | MPat of ('syntax_tree lambda list)
+and 'syntax_tree closure_t =
+  | SPat of ('syntax_tree lambda_t)
+  | MPat of ('syntax_tree lambda_t list)
   | Prim of ('syntax_tree thunk_t list -> 'syntax_tree value)
 
 and 'syntax_tree value =
@@ -45,7 +45,7 @@ and 'syntax_tree value =
   | LabelCons of (ID.id * (ID.id, 'syntax_tree thunk_t) OH.t )
   | Tuple of ('syntax_tree thunk_t list)
   | List of ('syntax_tree thunk_t list)
-  | Closure of ('syntax_tree closure * int * E.aexp list)
+  | Closure of ('syntax_tree closure_t * int * E.aexp list)
 
 and 'syntax_tree thunk_t = unit -> 'syntax_tree value
 
