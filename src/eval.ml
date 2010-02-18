@@ -35,9 +35,9 @@ type 'syntax_tree lambda_t = {
 and 'syntax_tree closure_t =
   | SPat of ('syntax_tree lambda_t)
   | MPat of ('syntax_tree lambda_t list)
-  | Prim of ('syntax_tree thunk_t list -> 'syntax_tree value)
+  | Prim of ('syntax_tree thunk_t list -> 'syntax_tree value_t)
 
-and 'syntax_tree value =
+and 'syntax_tree value_t =
   | Bottom
   | IO
   | Literal of SYN.literal
@@ -47,12 +47,12 @@ and 'syntax_tree value =
   | List of ('syntax_tree thunk_t list)
   | Closure of ('syntax_tree closure_t * int * E.aexp list)
 
-and 'syntax_tree thunk_t = unit -> 'syntax_tree value
+and 'syntax_tree thunk_t = unit -> 'syntax_tree value_t
 
 and 'syntax_tree pre_value_t =
     (* Thunk of (P.pat * E.t * 'syntax_tree env_t) *)
-    Thunk of (unit -> 'syntax_tree value)
-  | Thawed of 'syntax_tree value
+    Thunk of (unit -> 'syntax_tree value_t)
+  | Thawed of 'syntax_tree value_t
 
 and 'syntax_tree scope_t = (S.t, 'syntax_tree thunk_t) H.t
 
@@ -87,7 +87,7 @@ let prim_trace =
       | _        -> (fun s -> prerr_endline ("TRACE: " ^ s))
 
 let primTable = 
-  let table : (string, syntax_tree_t value) H.t = create_symtab () in
+  let table : (string, syntax_tree_t value_t) H.t = create_symtab () in
   let raise_type_err name msg =
     failwith (F.sprintf "Primitive argument type error: %s: %s" name msg) in
 
@@ -377,7 +377,7 @@ let dump_pattern p =
   lastErrPat := Some p;
   Std.dump p
 
-let applyClosureStack : syntax_tree_t value Stack.t = Stack.create ()
+let applyClosureStack : syntax_tree_t value_t Stack.t = Stack.create ()
 
 (* let dummy_eval_exp (env : 'syntax_tree env_t) (exp : E.t) =
   Bottom *)
