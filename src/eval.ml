@@ -35,26 +35,26 @@ type 'module_e lambda = {
 and 'module_e closure =
   | SPat of ('module_e lambda)
   | MPat of ('module_e lambda list)
-  | Prim of ('module_e thunk_type list -> 'module_e value)
+  | Prim of ('module_e thunk_t list -> 'module_e value)
 
 and 'module_e value =
   | Bottom
   | IO
   | Literal of SYN.literal
-  | Cons of (ID.id * ('module_e thunk_type list))
-  | LabelCons of (ID.id * (ID.id, 'module_e thunk_type) OH.t )
-  | Tuple of ('module_e thunk_type list)
-  | List of ('module_e thunk_type list)
+  | Cons of (ID.id * ('module_e thunk_t list))
+  | LabelCons of (ID.id * (ID.id, 'module_e thunk_t) OH.t )
+  | Tuple of ('module_e thunk_t list)
+  | List of ('module_e thunk_t list)
   | Closure of ('module_e closure * int * E.aexp list)
 
-and 'module_e thunk_type = unit -> 'module_e value
+and 'module_e thunk_t = unit -> 'module_e value
 
 and 'module_e pre_value_t =
     (* Thunk of (P.pat * E.t * 'module_e env_t) *)
     Thunk of (unit -> 'module_e value)
   | Thawed of 'module_e value
 
-and 'module_e scope_t = (S.t, 'module_e thunk_type) H.t
+and 'module_e scope_t = (S.t, 'module_e thunk_t) H.t
 
 (* あるスコープでの環境 *)
 and 'module_e env_t = {
