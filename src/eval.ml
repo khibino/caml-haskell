@@ -23,7 +23,7 @@ module P = SYN.Pattern
 module E = SYN.Expression
 
 
-type e_module_type = (ID.symwl * M.export list * (M.impdecl list * E.t D.top list))
+type e_module_t = (ID.symwl * M.export list * (M.impdecl list * E.t D.top list))
 
 type 'module_e lambda = {
   arg_pat_list : P.pat list;
@@ -87,7 +87,7 @@ let prim_trace =
       | _        -> (fun s -> prerr_endline ("TRACE: " ^ s))
 
 let primTable = 
-  let table : (string, e_module_type value) H.t = create_symtab () in
+  let table : (string, e_module_t value) H.t = create_symtab () in
   let raise_type_err name msg =
     failwith (F.sprintf "Primitive argument type error: %s: %s" name msg) in
 
@@ -260,7 +260,7 @@ let export_buffer () = {
 let export_export_module exbuf = exbuf.export_module
 let export_export exbuf = exbuf.export
 
-let lastLoadProgram : e_module_type program_buffer option ref = ref None
+let lastLoadProgram : e_module_t program_buffer option ref = ref None
 
 let load_program pdata_queue =
   let prog = SaHt.create
@@ -377,7 +377,7 @@ let dump_pattern p =
   lastErrPat := Some p;
   Std.dump p
 
-let applyClosureStack : e_module_type value Stack.t = Stack.create ()
+let applyClosureStack : e_module_t value Stack.t = Stack.create ()
 
 (* let dummy_eval_exp (env : 'module_e env_t) (exp : E.t) =
   Bottom *)
