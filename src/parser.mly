@@ -769,13 +769,19 @@ gdpat:
 | gd KS_R_ARROW exp  { [($1, $3)] }
 ;
 
+/*
 exp_may_be_semi:
   exp SP_SEMI  { $1 }
 | exp  { $1 }
 ;
+*/
+
+may_be_semi:
+     { 0 }
+|  SP_SEMI  { 0 }
 
 stmt_list_exp: /* stmts */
-  stmt_list exp_may_be_semi  { (List.rev($1), $2) }     /*(n>=0)*/
+  stmt_list exp may_be_semi { (List.rev($1), $2) }     /*(n>=0)*/
 ;
 
 stmt_list:
