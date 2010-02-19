@@ -75,8 +75,8 @@ info:
 	echo "byte_libs = $(byte_libs)"
 
 test: all Prelude.lex0 Prelude.loin Prelude.layout Prelude.parse
-	for hs in p hello0 hello1 hello2 fixity fixity2 pat pat1 flip tak0 tak1; do \
-		./eval_main.nat ../sample/$${hs}.hs; \
+	for hs in p hello0 hello1 hello2 fixity fixity2 where0 where1 pat pat1 flip tak0 tak1; do \
+		printf "%-10s: " $${hs} ; ./eval_main.nat ../sample/$${hs}.hs; \
 	done
 
 .depends: $(mlis) $(sources)

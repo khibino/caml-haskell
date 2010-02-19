@@ -156,7 +156,7 @@ let primTable =
 
   let _ = (def_eager_num_op2_bool "<=" (<=) (<=),
            def_eager_num_op2_bool ">=" (>=) (>=),
-           def_eager_num_op2_bool "==" (==) (==),
+           def_eager_num_op2_bool "==" (=) (=),
            def_eager_num_op2_bool "/=" (<>) (<>)) in
                                        
   let prim_primError = "primError" in
@@ -179,7 +179,8 @@ let primTable =
                        match th() with
                            Literal (SYN.Int (i)) -> print_endline (Int64.to_string i); IO
                          | Literal (SYN.Float (f)) -> print_endline (string_of_float f); IO
-                         | Literal (SYN.String (m)) -> print_endline m; IO
+                         (* | Literal (SYN.String (m)) -> print_endline m; IO *)
+                         | Literal (SYN.String (_)) -> failwith "Not implemented: print: string argument."
                          | v -> raise_type_err prim_print ("Non-literal arguemnt found. " ^ (Std.dump v))
                      end
                  | _ -> raise_type_err prim_print "Arguemnt not found.") 1) in
