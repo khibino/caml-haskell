@@ -290,29 +290,6 @@ struct
     | NullList -> "[]"
     | Tuple i  -> ("(" ^ (Array.fold_left (^) "" (Array.make (i-1) ",")) ^ ")")
 
-(*
-  type qualifier =
-    | Sp of sp_con
-    | Qual of string option ref
-
-  type id = {
-    name : string;
-    qual : qualifier;
-  }
-*)
-
-(*
-  type qualid = {
-    name : string;
-    qual : string;
-  }
-
-  type id =
-    | Unq of string
-    | Q of qualid
-    | Sp of sp_con
-*)
-
   type qualifier =
     | Unq of Symbol.t (* unqualified id has scope module name *)
     | Q   of Symbol.t
@@ -637,6 +614,10 @@ struct
   and 'pat op2list_patf =
       PatF of ('pat * 'pat op2list_opf)
     | Op2NoArg
+
+  let uni_pat pat = PatF (pat, Op2End)
+  let patf_cons pat op2 rest = PatF (pat, (Op2F (op2, rest)))
+  let op2f_cons op2 pat rest = Op2F (op2, (PatF (pat, rest)))
 
   type pat =
       PlusP of (ID.idwl * int64 * T.loc)
@@ -987,6 +968,20 @@ struct
 (*     | UniOpF of (ID.idwl * 'exp * 'exp op2list_opf) *)
     | Op2NoArg
 
+  (*
+    TODO:
+    Using better abstraction.  (thanks sakaguchi-san)
+
+    type ('a, 'b) mlist = Mcons of ('a * ('b, 'a) mlist) | Mnil 
+    ...
+    type 'exp op2list_expf = ('exp, ID.idwl) mlist
+    type 'exp op2list_opf = (ID.idwl, 'exp) mlist
+  *)
+
+  let uni_exp exp = ExpF (exp, Op2End)
+  let expf_cons exp op2 rest = ExpF (exp, (Op2F (op2, rest)))
+  let op2f_cons op2 exp rest = Op2F (op2, (ExpF (exp, rest)))
+
   type aexp =
       VarE of ID.idwl (* qvar *)
     | ConsE of ID.idwl (* gcon *)
@@ -1117,29 +1112,44 @@ struct
       | x -> x
 
   and scan_op2exp pdata list =
-    match list with
-        E.ExpF (exp, E.Op2End) -> scan_exp10 pdata exp
-      | E.ExpF (expAA, E.Op2F (op_aa, (E.ExpF (expBB, E.Op2End)))) ->
-          E.VarOp2E (op_aa, scan_exp10 pdata expAA, scan_exp10 pdata expBB)
-      | E.ExpF (expAA, E.Op2F ((op_aa, _) as op_aa_wl, ((E.ExpF (expBB, E.Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
-          ((* 演算子の優先順位を取得するために (current, prelude) as pdata を渡す *)
-            let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
-            let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
-              (* Printf.printf "(%s, %d) vs (%s, %d)\n" (ID.name_str op_aa) (snd aa_fixity) (ID.name_str op_bb) (snd bb_fixity); *)
-              match (aa_fixity, bb_fixity) with
-                  ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-                    scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa_wl, scan_exp10 pdata expAA, scan_exp10 pdata expBB), E.Op2F (op_bb_wl, rest)))
-                | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
-                    scan_op2exp pdata (E.ExpF (E.VarOp2E (op_aa_wl, scan_exp10 pdata expAA, scan_exp10 pdata expBB), E.Op2F (op_bb_wl, rest)))
-                | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-                    E.VarOp2E (op_aa_wl, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
-                | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
-                    E.VarOp2E (op_aa_wl, scan_exp10 pdata expAA, (scan_op2exp pdata cdr))
-                | _ ->
-                    failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
-                                (fixity_str aa_fixity)
-                                (fixity_str bb_fixity)))
-      | _ -> failwith "Arity 2 operator expression syntax error."
+    let rec try_leaf_fold list =
+      let scaned_op2exp op expAA expBB =
+        E.VarOp2E (op,
+                   scan_exp10 pdata expAA,
+                   scan_exp10 pdata expBB) in
+        match list with
+          | E.ExpF (exp, E.Op2End) -> (* list *)
+              E.ExpF (scan_exp10 pdata exp, E.Op2End)
+          | E.ExpF (expAA, E.Op2F (op_aa,
+                                   (E.ExpF (expBB, E.Op2End)))) ->
+              E.uni_exp (scaned_op2exp op_aa expAA expBB)
+          | E.ExpF (expAA, E.Op2F ((op_aa, _) as op_aa_wl,
+                                   ((E.ExpF (expBB, E.Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
+              begin
+                (* 演算子の優先順位を取得するために (current, prelude) as pdata を渡す *)
+                let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
+                let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
+                  (* Printf.printf "(%s, %d) vs (%s, %d)\n" (ID.name_str op_aa) (snd aa_fixity) (ID.name_str op_bb) (snd bb_fixity); *)
+                  match (aa_fixity, bb_fixity) with
+                    | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
+                        try_leaf_fold (E.expf_cons (scaned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
+                    | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
+                        try_leaf_fold (E.expf_cons (scaned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
+                    | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
+                        E.expf_cons expAA op_aa_wl (try_leaf_fold cdr)
+                    | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
+                        E.expf_cons expAA op_aa_wl (try_leaf_fold cdr)
+                    | _ ->
+                        failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
+                                    (fixity_str aa_fixity)
+                                    (fixity_str bb_fixity))
+              end
+          | _ -> failwith "Arity 2 operator expression syntax error."
+    in
+      match try_leaf_fold list with
+        | E.ExpF (exp, E.Op2End) -> exp
+        | E.ExpF (exp, E.Op2F (_, E.Op2NoArg)) -> failwith "scan_op2exp: section not implemented."
+        | folded -> scan_op2exp pdata folded
 
 (*
   (* TODO: The same form section scan function *)
