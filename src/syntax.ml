@@ -72,27 +72,10 @@ let must_be_int li err =
       (Int (i64), _) -> Int64.to_int i64
     | _ -> failwith err
 
-(*
-module ModuleKey =
-struct
-  type t = string option ref
-
-  let add n = ref (Some n)
-  let add_local () = (ref None)
-
-  let str n =
-    match !n with
-        Some n -> n
-      | None -> failwith "ModuleKey.str called with not named local module!"  (* "<local>" *)
-
-end
-*)
-
 module ParseBuffer =
 struct
   module H = Hashtbl
   module SAH = SaHashtbl
-  (* module MKEY = ModuleKey *)
 
   let debugFlag = ref false  (* Syntax.ParseBuffer.debugFlag := true *)
   let debug_out s =
@@ -101,7 +84,6 @@ struct
         flush stderr
 
   type module_buffer = {
-    (* mutable symbol : Sym.t; *)
     symbol : Sym.t;
 
     op_fixity_assoc : (string, (fixity * tclass option)) SAH.t;
@@ -131,7 +113,6 @@ struct
          (fun n tcls -> ((tclass_str tcls) ^ n)))
     in
     let rec this = {
-        (* mkey = mn; *)
         symbol = name;
         
         op_fixity_assoc = fixity_a;
@@ -167,8 +148,6 @@ struct
   let theBufferStack = Stack.create ()
 
 
-  (* let parsing_module_symbol = Sym.intern "<parsing>" *)
-  (* let create () =  *)
   let create local_module_symbol =
     let (massoc, lm) = (SAH.create
                           (fun x -> "ParseBuffer BUG!: same name module added: " ^ x)
@@ -203,8 +182,6 @@ struct
   let find_module modid = (get_last_buffer ()).get_module modid
   let find_local_module () = (get_last_buffer ()).get_local_module ()
 
-  (* let module_key modid = (find_module modid).mkey *)
-  (* let module_key modid = module_name (find_module modid) *)
   let local_module_key () = (find_local_module ()).symbol
 
   let get_buffer_of_qual nr =
@@ -451,7 +428,6 @@ end
 module ParsedData =
 struct
   module H = Hashtbl
-  (* module MKEY = ModuleKey *)
   module SAH = SaHashtbl
   module PBuf = ParseBuffer
   module ID = Identifier
