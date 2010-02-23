@@ -1097,11 +1097,34 @@ struct
         | x -> lastScanBug := Some x; failwith "Syntax BUG!!"
 
   and scan_exp0 pdata =
-    function
-        E.Exp0 exp0 -> (scan_op2exp pdata exp0)
-      | x -> x
+    (*  *)
+    let scan_atom_exp pdata =
+      function
+          E.ParenE exp -> E.ParenE (scan_exp_top pdata exp)
+        | E.TupleE elist -> E.TupleE (L.map (fun exp -> scan_exp_top pdata exp) elist)
+        | E.ListE elist -> E.ListE (L.map (fun exp -> scan_exp_top pdata exp) elist)
+        | x -> x
+    in
+    (*  *)
+    let rec scan_fun_exp pdata =
+      function
+          E.FfunE aexp -> E.FfunE (scan_atom_exp pdata aexp)
+        | E.FappE (fexp, aexp) -> E.FappE (scan_fun_exp pdata fexp, scan_atom_exp pdata aexp)
+        | E.FappEID -> failwith "Syntax BUG!!. FappEID found."
+    in
+    (*  *)
+    let scan_exp10 pdata exp10 =
+      match exp10 with
+          E.LambdaE (x, exp) -> E.LambdaE (x, scan_exp_top pdata exp)
+        | E.LetE (decl_list, exp) -> E.LetE (L.map (op2_scan_decl pdata) decl_list, scan_exp_top pdata exp)
+        | E.IfE (pred, t, f) -> E.IfE (scan_exp_top pdata pred, scan_exp_top pdata t, scan_exp_top pdata f)
+        | E.CaseE (exp, x) -> E.CaseE (scan_exp_top pdata exp, x)
+        | E.DoE (stmt_list, exp) -> E.DoE (L.map (scan_do_stmt pdata) stmt_list, scan_exp_top pdata exp)
+        | E.FexpE fexp -> E.FexpE (scan_fun_exp pdata fexp)
+        | x -> x
+    in
 
-  and scan_op2exp pdata list =
+    (*  *)
     let rec fold_leafs list =
       let scanned_op2exp op expAA expBB =
         E.VarOp2E (op,
@@ -1136,42 +1159,25 @@ struct
               end
           | _ -> failwith "Arity 2 operator expression syntax error."
     in
+    (*  *)
+    let rec scan_op2exp pdata list =
       match fold_leafs list with
         | E.ExpF (exp, E.Op2End) -> exp
         | E.ExpF (exp, E.Op2F (_, E.Op2NoArg)) -> failwith "scan_op2exp: section not implemented."
         | folded -> scan_op2exp pdata folded
-
-(*
-  (* TODO: The same form section scan function *)
-  and scan_op2exp_rsec pdata rs_list =
-    match rs_list with
-        E.Op2End -> scan_exp10 pdata exp
-      | E.Op2F (op_aa, (E.ExpF (expBB, E.Op2End))) ->
-   ...
-*)
-
-  and scan_atom_exp pdata =
-    function
-        E.ParenE exp -> E.ParenE (scan_exp_top pdata exp)
-      | E.TupleE elist -> E.TupleE (L.map (fun exp -> scan_exp_top pdata exp) elist)
-      | E.ListE elist -> E.ListE (L.map (fun exp -> scan_exp_top pdata exp) elist)
-      | x -> x
-
-  and scan_fun_exp pdata =
-    function
-        E.FfunE aexp -> E.FfunE (scan_atom_exp pdata aexp)
-      | E.FappE (fexp, aexp) -> E.FappE (scan_fun_exp pdata fexp, scan_atom_exp pdata aexp)
-      | E.FappEID -> failwith "Syntax BUG!!. FappEID found."
-
-  and scan_exp10 pdata exp10 =
-    match exp10 with
-        E.LambdaE (x, exp) -> E.LambdaE (x, scan_exp_top pdata exp)
-      | E.LetE (decl_list, exp) -> E.LetE (L.map (op2_scan_decl pdata) decl_list, scan_exp_top pdata exp)
-      | E.IfE (pred, t, f) -> E.IfE (scan_exp_top pdata pred, scan_exp_top pdata t, scan_exp_top pdata f)
-      | E.CaseE (exp, x) -> E.CaseE (scan_exp_top pdata exp, x)
-      | E.DoE (stmt_list, exp) -> E.DoE (L.map (scan_do_stmt pdata) stmt_list, scan_exp_top pdata exp)
-      | E.FexpE fexp -> E.FexpE (scan_fun_exp pdata fexp)
-      | x -> x
+            (*
+            (* TODO: The same form section scan function *)
+              and scan_op2exp_rsec pdata rs_list =
+              match rs_list with
+              E.Op2End -> scan_exp10 pdata exp
+              | E.Op2F (op_aa, (E.ExpF (expBB, E.Op2End))) ->
+              ...
+            *)
+    in
+      (* scan_exp0 body *)
+      function
+          E.Exp0 exp0 -> (scan_op2exp pdata exp0)
+        | x -> x
 
   and scan_do_stmt pdata stmt =
     match stmt with
@@ -1181,20 +1187,20 @@ struct
       | DS.Empty -> DS.Empty
 
   and op2_scan_pat pdata =
-    function
-        P.Pat0 (patf) -> P.scan_op2pat 0 pdata (op2_scan_pat pdata) patf
-      | P.Pat1 (patf) -> P.scan_op2pat 1 pdata (op2_scan_pat pdata) patf
-      | p -> op2_scan_atompat pdata p
-
-  and op2_scan_atompat pdata =
-    function
-        P.AsP (id, p) -> P.AsP (id, op2_scan_pat pdata p)
-      | P.ConP (id, plist) -> P.ConP (id, L.map (fun p0 -> op2_scan_pat pdata p0) plist)
-      | P.LabelP (id, idp_list) -> P.LabelP (id, (L.map (fun (id, p0) -> (id, op2_scan_pat pdata p0)) idp_list))
-      | P.TupleP (plist) -> P.TupleP (L.map (fun p0 -> op2_scan_pat pdata p0) plist)
-      | P.ListP  (plist) -> P.ListP  (L.map (fun p0 -> op2_scan_pat pdata p0) plist)
-      | P.Irref (p) -> P.Irref (op2_scan_pat pdata p)
-      | x -> x
+    let rec  op2_scan_atompat pdata =
+      function
+          P.AsP (id, p) -> P.AsP (id, op2_scan_pat pdata p)
+        | P.ConP (id, plist) -> P.ConP (id, L.map (fun p0 -> op2_scan_pat pdata p0) plist)
+        | P.LabelP (id, idp_list) -> P.LabelP (id, (L.map (fun (id, p0) -> (id, op2_scan_pat pdata p0)) idp_list))
+        | P.TupleP (plist) -> P.TupleP (L.map (fun p0 -> op2_scan_pat pdata p0) plist)
+        | P.ListP  (plist) -> P.ListP  (L.map (fun p0 -> op2_scan_pat pdata p0) plist)
+        | P.Irref (p) -> P.Irref (op2_scan_pat pdata p)
+        | x -> x
+    in
+      function
+          P.Pat0 (patf) -> P.scan_op2pat 0 pdata (op2_scan_pat pdata) patf
+        | P.Pat1 (patf) -> P.scan_op2pat 1 pdata (op2_scan_pat pdata) patf
+        | p -> op2_scan_atompat pdata p
 
   and op2_scan_funlhs pdata =
     function
