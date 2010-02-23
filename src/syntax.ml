@@ -623,32 +623,46 @@ rpati   ->      pati+1 qconop(r,i) (rpati | pati+1)
 *)
 
   let rec scan_op2pat min_i pdata pat_fun list =
-    match list with
-        PatF (pat, Op2End) -> pat_fun pat
-      | PatF (patAA, Op2F (op_aa_wl, (PatF (patBB, Op2End)))) ->
-          ConOp2P (op_aa_wl, pat_fun patAA, pat_fun patBB)
-      | PatF (patAA, Op2F ((op_aa, _) as op_aa_wl, ((PatF (patBB, Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
-          ((* 演算子の優先順位を取得するために (current, prelude) as pdata を渡す *)
-            let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
-            let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
-              match (aa_fixity, bb_fixity) with
-                  ((_, aa_i), _) when aa_i < min_i ->
-                    failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str aa_fixity))
-                | (_, (_, bb_i)) when bb_i < min_i ->
-                    failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str bb_fixity))
-                | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-                    scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa_wl, pat_fun patAA, pat_fun patBB), Op2F (op_bb_wl, rest)))
-                | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
-                    scan_op2pat min_i pdata pat_fun (PatF (ConOp2P (op_aa_wl, pat_fun patAA, pat_fun patBB), Op2F (op_bb_wl, rest)))
-                | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-                    ConOp2P (op_aa_wl, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
-                | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
-                    ConOp2P (op_aa_wl, pat_fun patAA, (scan_op2pat min_i pdata pat_fun cdr))
-                | _ ->
-                    failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
-                                (fixity_str aa_fixity)
-                                (fixity_str bb_fixity)))
-      | _ -> failwith "Arity 2 operator pattern syntax error."
+    let rec fold_leafs list =
+      let scanned_op2pat op patAA patBB =
+        ConOp2P (op,
+                 pat_fun patAA,
+                 pat_fun patBB) in
+        
+        match list with
+          | PatF (pat, Op2End) ->
+              uni_pat (pat_fun pat)
+          | PatF (patAA, Op2F (op_aa_wl, (PatF (patBB, Op2End)))) ->
+              uni_pat (scanned_op2pat op_aa_wl patAA patBB)
+          | PatF (patAA, Op2F ((op_aa, _) as op_aa_wl, ((PatF (patBB, Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
+              begin
+                (* 演算子の優先順位を取得するために (current, prelude) as pdata を渡す *)
+                let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
+                let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
+                  match (aa_fixity, bb_fixity) with
+                      ((_, aa_i), _) when aa_i < min_i ->
+                        failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str aa_fixity))
+                    | (_, (_, bb_i)) when bb_i < min_i ->
+                        failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str bb_fixity))
+                    | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
+                        fold_leafs (patf_cons (scanned_op2pat op_aa_wl patAA patBB) op_bb_wl rest)
+                    | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
+                        fold_leafs (patf_cons (scanned_op2pat op_aa_wl patAA patBB) op_bb_wl rest)
+                    | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
+                        patf_cons patAA op_aa_wl (fold_leafs cdr)
+                    | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
+                        patf_cons patAA op_aa_wl (fold_leafs cdr)
+                    | _ ->
+                        failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
+                                    (fixity_str aa_fixity)
+                                    (fixity_str bb_fixity))
+              end
+          | _ -> failwith "Arity 2 operator pattern syntax error."
+    in
+      match fold_leafs list with
+        | PatF (pat, Op2End) -> pat
+        | PatF (pat, Op2F (_, Op2NoArg)) -> failwith "scan_op2pat: section not implemented."
+        | folded -> scan_op2pat min_i pdata pat_fun folded
 
 end
 
@@ -1088,17 +1102,17 @@ struct
       | x -> x
 
   and scan_op2exp pdata list =
-    let rec try_leaf_fold list =
-      let scaned_op2exp op expAA expBB =
+    let rec fold_leafs list =
+      let scanned_op2exp op expAA expBB =
         E.VarOp2E (op,
                    scan_exp10 pdata expAA,
                    scan_exp10 pdata expBB) in
         match list with
           | E.ExpF (exp, E.Op2End) -> (* list *)
-              E.ExpF (scan_exp10 pdata exp, E.Op2End)
+              E.uni_exp (scan_exp10 pdata exp)
           | E.ExpF (expAA, E.Op2F (op_aa,
                                    (E.ExpF (expBB, E.Op2End)))) ->
-              E.uni_exp (scaned_op2exp op_aa expAA expBB)
+              E.uni_exp (scanned_op2exp op_aa expAA expBB)
           | E.ExpF (expAA, E.Op2F ((op_aa, _) as op_aa_wl,
                                    ((E.ExpF (expBB, E.Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
               begin
@@ -1108,13 +1122,13 @@ struct
                   (* Printf.printf "(%s, %d) vs (%s, %d)\n" (ID.name_str op_aa) (snd aa_fixity) (ID.name_str op_bb) (snd bb_fixity); *)
                   match (aa_fixity, bb_fixity) with
                     | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-                        try_leaf_fold (E.expf_cons (scaned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
+                        fold_leafs (E.expf_cons (scanned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
                     | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
-                        try_leaf_fold (E.expf_cons (scaned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
+                        fold_leafs (E.expf_cons (scanned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
                     | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-                        E.expf_cons expAA op_aa_wl (try_leaf_fold cdr)
+                        E.expf_cons expAA op_aa_wl (fold_leafs cdr)
                     | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
-                        E.expf_cons expAA op_aa_wl (try_leaf_fold cdr)
+                        E.expf_cons expAA op_aa_wl (fold_leafs cdr)
                     | _ ->
                         failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
                                     (fixity_str aa_fixity)
@@ -1122,7 +1136,7 @@ struct
               end
           | _ -> failwith "Arity 2 operator expression syntax error."
     in
-      match try_leaf_fold list with
+      match fold_leafs list with
         | E.ExpF (exp, E.Op2End) -> exp
         | E.ExpF (exp, E.Op2F (_, E.Op2NoArg)) -> failwith "scan_op2exp: section not implemented."
         | folded -> scan_op2exp pdata folded
