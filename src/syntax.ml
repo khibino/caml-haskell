@@ -2,7 +2,7 @@ module F = Printf
 module T = Token
 module L = List
 module OH = OrderedHash
-module Sym = Symbol
+module S = Symbol
 
 type ('k, 'v) ordh = ('k, 'v) OH.t
 
@@ -42,18 +42,18 @@ let tclass_context_str =
     | Some tc -> tclass_str tc
 
 let the_prelude_name = "Prelude"
-let the_prelude_symbol = Sym.intern the_prelude_name
+let the_prelude_symbol = S.intern the_prelude_name
 
-(* let bool_true = Sym.intern "True" *)
-let bool_long_true = Sym.intern "Prelude.True"
-(* let bool_false = Sym.intern "False" *)
-let bool_long_false = Sym.intern "Prelude.False"
+(* let bool_true = S.intern "True" *)
+let bool_long_true = S.intern "Prelude.True"
+(* let bool_false = S.intern "False" *)
+let bool_long_false = S.intern "Prelude.False"
 
 
 let the_main_name = "Main"
-let the_main_symbol = Sym.intern the_main_name
+let the_main_symbol = S.intern the_main_name
 let the_entry_main_name = "main"
-let the_entry_main_symbol = Sym.intern the_entry_main_name
+let the_entry_main_symbol = S.intern the_entry_main_name
 
 type literal =
     Int of (int64)
@@ -84,7 +84,7 @@ struct
         flush stderr
 
   type module_buffer = {
-    symbol : Sym.t;
+    symbol : Symbol.t;
 
     op_fixity_assoc : (string, (fixity * tclass option)) SAH.t;
     op_typesig_assoc : (string, tclass) SAH.t;
@@ -95,7 +95,7 @@ struct
     dump_buf : (unit -> string)
   }
 
-  let module_name mb = Sym.name mb.symbol
+  let module_name mb = S.name mb.symbol
 
   let create_module name = 
     let (fixity_a, typesig_a, fun_a, tclass_a) =
@@ -120,7 +120,7 @@ struct
         op_fun_assoc = fun_a;
         tclass_assoc = tclass_a;
 
-        dump_buf = (fun () -> (Sym.name this.symbol) ^ "\n"
+        dump_buf = (fun () -> (S.name this.symbol) ^ "\n"
                       ^ (SAH.to_string fixity_a)  ^ "\n"
                       ^ (SAH.to_string typesig_a) ^ "\n"
                       ^ (SAH.to_string tclass_a)  ^ "\n")
@@ -159,7 +159,7 @@ struct
       get_module = (fun modid ->
                       if SAH.mem massoc modid then SAH.find massoc modid
                       else
-                        let m = create_module (Sym.intern modid) in
+                        let m = create_module (S.intern modid) in
                         let _ = SAH.add massoc modid m in m);
       get_local_module = (fun () -> lm);
     } in
@@ -187,7 +187,7 @@ struct
   let get_buffer_of_qual nr =
     let lm = find_local_module () in
       if nr == lm.symbol then lm
-      else find_module (Sym.name nr)
+      else find_module (S.name nr)
 
   let make_op_def pb_mod opn op_cons op_str_fun =
     let (fixity, fix_tclass) = op_fixity pb_mod opn in
@@ -196,7 +196,7 @@ struct
     let tclass =
       match (fix_tclass, sig_tclass) with
           (None, None) -> None
-        | (Some _, Some _) -> failwith ("Duplicated declarations for " ^ (Sym.name pb_mod.symbol) ^ "." ^ opn)
+        | (Some _, Some _) -> failwith ("Duplicated declarations for " ^ (S.name pb_mod.symbol) ^ "." ^ opn)
         | (x, None) | (None, x) -> x
     in
     let v = op_cons opn fixity tclass in
@@ -242,7 +242,7 @@ struct
              conv_op named_as_local) in
 
       data_cons
-        (Sym.intern local_module_name)
+        (S.intern local_module_name)
         result_op_assoc
         named_as_local.tclass_assoc
 
@@ -450,7 +450,7 @@ struct
       (tclass_context_str def.tclass) ^ (fix_part def)
 
   type module_data = {
-    mutable symbol : Sym.t;
+    mutable symbol : Symbol.t;
     op_assoc : (string, op_def) SAH.t;
     tclass_assoc : (string, tclass) SAH.t;
   }
@@ -461,7 +461,7 @@ struct
 (*
   let qual_fun pd =
     if pd.symbol == PBuf.parsing_module_symbol then ID.make_unqual_id
-    else (fun n -> ID.make_qual_id n (Sym.name pd.symbol))
+    else (fun n -> ID.make_qual_id n (S.name pd.symbol))
 *)
 
   type 'syntax_tree t = {
@@ -472,7 +472,7 @@ struct
   }
 
   let module_to_string m =
-    "module_data: " ^ (Sym.name m.symbol) ^ "\n" ^ (SAH.to_string m.op_assoc)
+    "module_data: " ^ (S.name m.symbol) ^ "\n" ^ (SAH.to_string m.op_assoc)
 
   let get_module_data pd id =
     (* match id with *)
@@ -485,7 +485,7 @@ struct
       | (_, ID.Q m)    -> 
           let lm = pd.local_module in
             if m == lm.symbol then lm
-            else SAH.find pd.module_assoc (Sym.name m)
+            else SAH.find pd.module_assoc (S.name m)
 (*       failwith ("module " ^ modid ^" not found.") *)
 
   let local_module_sym pd = pd.local_module.symbol
@@ -499,7 +499,7 @@ struct
           if SAH.mem pm.op_assoc op then
             SAH.find pm.op_assoc op
           else
-            failwith ("operator " ^ op ^ " not found in module " ^ (Sym.name m.symbol))
+            failwith ("operator " ^ op ^ " not found in module " ^ (S.name m.symbol))
 
   let create_parsed_data pbuf (((local_module_symbol, _), _, _) as syntax_t) =
     let new_mod_assoc = SAH.create
@@ -513,13 +513,13 @@ struct
            (* let mod_data = convert_module pb_mod in *)
            let mod_data = PBuf.conv_to_data pb_mod make_data op_def_string in
            let _ = debug_out ("Convert module done.") in
-             SAH.add new_mod_assoc (Sym.name mod_data.symbol) mod_data
+             SAH.add new_mod_assoc (S.name mod_data.symbol) mod_data
          else
            debug_out ("Skipping module '" ^ modid ^ "' which is local"))
       pbuf.PBuf.module_assoc
     in
 
-    let local_module_name = Sym.name local_module_symbol in
+    let local_module_name = S.name local_module_symbol in
     let _ = debug_out ("Converting local module '" ^ local_module_name ^ "' ...") in
     let lm = PBuf.conv_to_data_local
       pbuf local_module_name
@@ -529,7 +529,7 @@ struct
     let _ = debug_out ("Convert local module done.") in
 
     let _ = SAH.add new_mod_assoc local_module_name lm in
-    (* let _ = (pbuf.PBuf.get_local_module ()).PBuf.symbol <- (Sym.intern local_module_name) in *)
+    (* let _ = (pbuf.PBuf.get_local_module ()).PBuf.symbol <- (S.intern local_module_name) in *)
       { module_assoc = new_mod_assoc;
 
         local_module = lm;
@@ -1036,7 +1036,7 @@ struct
     VarE (ID.idwul ((PD.qual_fun pd) name))
 *)
   let make_prelude_var_exp name =
-    VarE (ID.idwul (ID.qualid the_prelude_symbol (Sym.intern name)))
+    VarE (ID.idwul (ID.qualid the_prelude_symbol (S.intern name)))
 
 end
 
