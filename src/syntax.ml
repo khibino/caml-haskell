@@ -86,7 +86,7 @@ struct
   type module_buffer = {
     symbol : Symbol.t;
 
-    op_fixity_assoc : (string, (fixity * tclass option)) SAH.t;
+    op_fixity_assoc : (Symbol.t, (fixity * tclass option)) SaHt.t;
     op_typesig_assoc : (string, tclass) SAH.t;
 
     op_fun_assoc : (string, bool) SAH.t;
@@ -99,14 +99,17 @@ struct
 
   let create_module name = 
     let (fixity_a, typesig_a, fun_a, tclass_a) =
-      (SAH.create
-         ((^) "Duplicated fixity declarations for ") 
-         (fun n (fix, tcls) -> n ^ (fixity_str fix)),
+      (SaHt.create
+          S.name
+          (fun (fix, tcls) -> fixity_str fix)
+          (Some ((^) "Duplicated fixity declarations for "))
+          None
+          ((S.name name) ^ ":" ^ "fixity_assoc"),
        SAH.create
-         ((^) "Duplicated declarations of ") 
+         ((^) "Duplicated declarations of ")
          (fun n tcls -> ((tclass_str tcls) ^ n)),
        SAH.create
-         ((^) "Duplicated function declarations of ") 
+         ((^) "Duplicated function declarations of ")
          (fun n _ -> "func(" ^ n ^ ")"),
        SAH.create
          ((^) "Duplicated type class declarations of ")
@@ -121,15 +124,15 @@ struct
         tclass_assoc = tclass_a;
 
         dump_buf = (fun () -> (S.name this.symbol) ^ "\n"
-                      ^ (SAH.to_string fixity_a)  ^ "\n"
+                      ^ (SaHt.to_string fixity_a)  ^ "\n"
                       ^ (SAH.to_string typesig_a) ^ "\n"
                       ^ (SAH.to_string tclass_a)  ^ "\n")
       }
     in this
 
   let op_fixity pb_mod op =
-    if SAH.mem pb_mod.op_fixity_assoc op then
-      SAH.find pb_mod.op_fixity_assoc op
+    if SaHt.mem pb_mod.op_fixity_assoc op then
+      SaHt.find pb_mod.op_fixity_assoc op
     else (default_op_fixity, None)
 
   let op_typesig pb_mod op =
@@ -182,15 +185,13 @@ struct
   let find_module modid = (get_last_buffer ()).get_module modid
   let find_local_module () = (get_last_buffer ()).get_local_module ()
 
-  let local_module_key () = (find_local_module ()).symbol
-
   let get_buffer_of_qual nr =
     let lm = find_local_module () in
       if nr == lm.symbol then lm
       else find_module (S.name nr)
 
   let make_op_def pb_mod opn op_cons op_str_fun =
-    let (fixity, fix_tclass) = op_fixity pb_mod opn in
+    let (fixity, fix_tclass) = op_fixity pb_mod (S.intern opn) in
     let sig_tclass = op_typesig pb_mod opn in
 
     let tclass =
@@ -226,6 +227,14 @@ struct
 
     let conv_op mod_to_conv =
       let conv_op_assoc assoc =
+        SaHt.iter
+          (fun op _ ->
+             SAH.replace result_op_assoc
+               (S.name op)
+               (make_op_def local_mod (S.name op) op_cons op_def_str))
+          assoc
+      in
+      let conv_op_old_assoc assoc =
         SAH.iter
           (fun op _ ->
              SAH.replace result_op_assoc
@@ -234,8 +243,8 @@ struct
           assoc
       in
         (conv_op_assoc mod_to_conv.op_fixity_assoc,
-         conv_op_assoc mod_to_conv.op_typesig_assoc,
-         conv_op_assoc mod_to_conv.op_fun_assoc)
+         conv_op_old_assoc mod_to_conv.op_typesig_assoc,
+         conv_op_old_assoc mod_to_conv.op_fun_assoc)
     in
 
     let _ = (conv_op local_mod,
@@ -315,10 +324,6 @@ struct
 
       (* Q ({ name = n; qual = q; }) *)
 
-(*
-  let make_local_id n = 
-    make_id_core n (Qual (PBuf.local_module_key ()))
-*)
   let unqualid n m = 
     { short = N   n;
       qual  = Unq m;
@@ -331,11 +336,6 @@ struct
     unqualid
       (S.intern n)
       (PBuf.find_local_module ()).PBuf.symbol
-
-(*
-  let make_id modid n = 
-    make_qual_id n modid
-*)
 
   let make_sp con =
     { short = Sp con;
@@ -366,6 +366,8 @@ struct
       | (N n, _) (* (N n, Unq m) *) -> S.name n
 (*       | (_, _) -> failwith "symbol name string unknown case." *)
 
+  let name_sym id = S.intern (name_str id)
+
   let make_id_with_mod iwm = make_qual_id iwm.T.modid iwm.T.id
 
   let make_idwl_with_mod (iwm, loc) = idwl (make_id_with_mod iwm) loc
@@ -377,7 +379,7 @@ struct
       | (_, Q m)    -> PBuf.find_module (S.name m)
 
   let as_op_set_fixity id fixity =
-    SAH.add (get_module_buffer id).PBuf.op_fixity_assoc (name_str id) fixity
+    SaHt.add (get_module_buffer id).PBuf.op_fixity_assoc (name_sym id) fixity
 
   let as_op_set_typesig id tclass =
     SAH.add (get_module_buffer id).PBuf.op_typesig_assoc (name_str id) tclass

@@ -9,8 +9,8 @@ type ('a, 'b) t = {
   key_str : 'a -> string;
   val_str : 'b -> string;
 
-  dup_err_fmt : string -> string;
-  entry_fmt : string -> string -> string;
+  dup_err_fmt : (string -> string) option;
+  entry_fmt : (string -> string -> string) option;
 
   name : string;
 }
@@ -48,10 +48,20 @@ let find store k =
   debug_fun "find" (store.key_str k) store.name;
   keyarg_hashtbl H.find store k
 
+let duplicate_error store k =
+  (* let (k, oldv) = ((store.key_str k), (store.val_str oldv)) in *)
+  let k = store.key_str k in
+    failwith
+      (match store.dup_err_fmt with
+         | None ->
+             (* F.sprintf "SaHt: already dup-added against '%s'. Old value is '%s'." k oldv *)
+             F.sprintf "SaHt: already dup-added against '%s'." k
+         | Some fmtf -> fmtf k)
+
 let add store k v =
   debug_fun "add" (store.key_str k) store.name;
   if H.mem store.tbl k then
-    failwith (store.dup_err_fmt (store.key_str k))
+    duplicate_error store k
   else H.add store.tbl k v
 
 let replace store k v =
@@ -64,5 +74,11 @@ let iter f store =
 let fold f store iv =
   H.fold f store.tbl iv
 
+let format_entry store k v =
+  let (k, v) = (store.key_str k, store.val_str v) in
+    match store.entry_fmt with
+      | None -> k ^ " => " ^ v
+      | Some fmtf -> fmtf k v
+
 let to_string store =
-  H.fold (fun k v c -> c ^ (store.entry_fmt (store.key_str k) (store.val_str v)) ^ "\n") store.tbl ""
+  H.fold (fun k v c -> c ^ (format_entry store k v) ^ "\n") store.tbl ""

@@ -266,8 +266,8 @@ let load_program pdata_queue =
   let prog = SaHt.create
     S.name
     (fun _ -> "<mod>")
-    (fun x -> "Already loaded module: " ^ x)
-    (fun ks vs -> ks ^ " => " ^ vs)
+    (Some (fun x -> "Already loaded module: " ^ x))
+    None (* (fun ks vs -> ks ^ " => " ^ vs) *)
     "<program buffer>"
   in
   let _ = Q.iter (fun pdata -> SaHt.add prog (PD.local_module_sym pdata) (module_buffer pdata)) pdata_queue in
@@ -796,20 +796,6 @@ let eval_export exbuf env =
           H.add ex (ID.long_sym id) true
       | M.EMod (modsym, _) ->
           H.add modex modsym true
-
-(*
-let eval_import imp_map env =
-  function
-    | M.IVar (id, _) -> ()
-    | M.ICons ((id, _), M.List labels) -> ()
-    | M.ICons ((id, _), M.All) -> ()
-    | M.IClass ((id, _), M.List labels) -> ()
-    | M.IClass ((id, _), M.All) -> ()
-
-let eval_impspec imp_map env =
-  function
-    | (M.Imp impl| M.Hide impl) -> L.map (eval_import map_pair env) impl
-*)
 
 let eval_impdecl imp_map env =
   function
