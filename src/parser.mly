@@ -3,24 +3,24 @@
   module OH = OrderedHash
 
   module TK = Token
-  module S = Syntax
+  module SYN = Syntax
 
-  module PBuf = S.ParseBuffer
+  module PBuf = SYN.ParseBuffer
 
-  module I = S.Identifier
+  module I = SYN.Identifier
 
-  module D = S.Decl
-  module M = S.Module
-  module P = S.Pattern
-  module DS = S.DoStmt
-  module TY = S.Type
-  module CON = S.Constructor
-  module CTX = S.Context
-  module INS = S.Instance
-  module CA = S.Case
-  module GD = S.Guard
-  module LC = S.ListComp
-  module E = S.Expression
+  module D = SYN.Decl
+  module M = SYN.Module
+  module P = SYN.Pattern
+  module DS = SYN.DoStmt
+  module TY = SYN.Type
+  module CON = SYN.Constructor
+  module CTX = SYN.Context
+  module INS = SYN.Instance
+  module CA = SYN.Case
+  module GD = SYN.Guard
+  module LC = SYN.ListComp
+  module E = SYN.Expression
 
   let debug_out_stream = stderr
   let debugFlag = ref false
@@ -99,8 +99,8 @@ e_module:
 module_top:
   K_MODULE modid export_list K_WHERE body { ($2, $3, $5) }
 | K_MODULE modid K_WHERE body         { ($2, [], $4) }
-| body { (I.idwul S.the_main_symbol,
-          [M.EVar (I.idwul (I.qualid S.the_main_symbol S.the_entry_main_symbol))],
+| body { (I.idwul SYN.the_main_symbol,
+          [M.EVar (I.idwul (I.qualid SYN.the_main_symbol SYN.the_entry_main_symbol))],
           $1) }
 ;
 
@@ -108,8 +108,8 @@ module_top:
 module_prefix:
   K_MODULE modid export_list K_WHERE { ($2, $3) }
 | K_MODULE modid K_WHERE             { ($2, []) }
-| { (I.idwul S.the_main_symbol,
-     [M.EVar (I.idwul (I.qualid S.the_main_symbol S.the_entry_main_symbol))]) }
+| { (I.idwul SYN.the_main_symbol,
+     [M.EVar (I.idwul (I.qualid SYN.the_main_symbol SYN.the_entry_main_symbol))]) }
 ;
 */
 
@@ -117,20 +117,20 @@ module_prefix:
 module_prefix:
   K_MODULE modid export_list K_WHERE { PBuf.create (fst $2) }
 | K_MODULE modid K_WHERE             { PBuf.create (fst $2) }
-| { PBuf.create S.the_main_symbol }
+| { PBuf.create SYN.the_main_symbol }
 ;
 */
 
 /*
 module_prefix:
   K_MODULE modid  { PBuf.create (fst $2) }
-| { PBuf.create S.the_main_symbol }
+| { PBuf.create SYN.the_main_symbol }
 ;
 */
 
 module_prefix:
   K_MODULE modid  { fst $2 }
-| { S.the_main_symbol }
+| { SYN.the_main_symbol }
 ;
 
 body:
@@ -354,7 +354,7 @@ idecl:
 gendecl:
   var_list KS_2_COLON context KS_R_W_ARROW typ  { D.TypeSig ($1, Some $3, $5) }         /* (type signature) */
 | var_list KS_2_COLON typ  { D.TypeSig ($1, None, $3) }         /* (type signature) */
-| fixity integer op_list  { D.Fixity (($1, (S.must_be_int $2 "Syntax Bug!")), $3) }     /* (fixity declaration) */
+| fixity integer op_list  { D.Fixity (($1, (SYN.must_be_int $2 "Syntax Bug!")), $3) }     /* (fixity declaration) */
 | fixity op_list  { D.Fixity (($1, 9), $2) }    /* (fixity declaration) */
 |   { D.Empty }                 /* (empty declaration) */
 ;
@@ -371,9 +371,9 @@ var_list:
 ;
 
 fixity:
-  K_INFIXL  { S.InfixLeft }
-| K_INFIXR  { S.InfixRight }
-| K_INFIX   { S.Infix }
+  K_INFIXL  { SYN.InfixLeft }
+| K_INFIXR  { SYN.InfixRight }
+| K_INFIX   { SYN.Infix }
 ;
 
 context:
@@ -574,13 +574,13 @@ funlhs:
 /*(* 二項演算パターンのトップが最終的に関数束縛にされる *)*/
 op2_pat_pair:
   ks_minus integer op2_pat_pair_right
-    { let p = match $2 with (S.Int (x), loc) -> P.MIntP (x, loc) | _ -> failwith "negative integer literal pattern syntax error."
+    { let p = match $2 with (SYN.Int (x), loc) -> P.MIntP (x, loc) | _ -> failwith "negative integer literal pattern syntax error."
       in (D.op2lhs_op $3,
           (P.PatF (p, D.op2lhs_left $3),
            D.op2lhs_right $3))
     }
 | ks_minus float op2_pat_pair_right
-    { let p = match $2 with (S.Float (x), loc) -> P.MFloatP (x, loc) | _ -> failwith "negative integer literal pattern syntax error."
+    { let p = match $2 with (SYN.Float (x), loc) -> P.MFloatP (x, loc) | _ -> failwith "negative integer literal pattern syntax error."
       in (D.op2lhs_op $3,
           (P.PatF (p, D.op2lhs_left $3),
            D.op2lhs_right $3))
@@ -802,7 +802,7 @@ fbind:
 
 pat:
   var ks_plus integer   /*(successor pattern)*/
-      { match $3 with (S.Int (i), loc) -> P.PlusP($1, i, loc) | _ -> failwith "plus integer pattern syntax error." }
+      { match $3 with (SYN.Int (i), loc) -> P.PlusP($1, i, loc) | _ -> failwith "plus integer pattern syntax error." }
 | pat0  { $1 }
 ;
 
@@ -819,9 +819,9 @@ lpati   ->      (lpati | pati+1) qconop(l,i) pati+1
 /*
 lpat6:
   ks_minus integer      (negative literal)
-      { match $2 with (S.Int (v), l) -> S.P.MIntP (v, l) | _ -> failwith "negative integer literal pattern syntax error." }
+      { match $2 with (SYN.Int (v), l) -> P.MIntP (v, l) | _ -> failwith "negative integer literal pattern syntax error." }
 | ks_minus float        (negative literal)
-      { match $2 with (S.Float (v), l) -> S.P.MFloatP (v, l) | _ -> failwith "negative integer literal pattern syntax error." }
+      { match $2 with (SYN.Float (v), l) -> P.MFloatP (v, l) | _ -> failwith "negative integer literal pattern syntax error." }
 ;
 */
 
@@ -835,11 +835,11 @@ pat0:
 
 op2_patn_list:
   ks_minus integer op2_patn_right
-    { let p = match $2 with (S.Int (x), loc) -> P.MIntP (x, loc) | _ -> failwith "negative integer literal pattern syntax error."
+    { let p = match $2 with (SYN.Int (x), loc) -> P.MIntP (x, loc) | _ -> failwith "negative integer literal pattern syntax error."
       in P.PatF (p, $3)
     }
 | ks_minus float op2_patn_right
-    { let p = match $2 with (S.Float (x), loc) -> P.MFloatP (x, loc) | _ -> failwith "negative integer literal pattern syntax error."
+    { let p = match $2 with (SYN.Float (x), loc) -> P.MFloatP (x, loc) | _ -> failwith "negative integer literal pattern syntax error."
       in P.PatF (p, $3)
     }
 | pat10 op2_patn_right  { P.PatF ($1, $2) }
@@ -1077,19 +1077,19 @@ literal:
 ;
 
 integer:
-  L_INTEGER  { (S.Int(fst $1), (snd $1)) }
+  L_INTEGER  { (SYN.Int(fst $1), (snd $1)) }
 ;
 
 float:
-  L_FLOAT  { (S.Float(fst $1), (snd $1)) }
+  L_FLOAT  { (SYN.Float(fst $1), (snd $1)) }
 ;
 
 char:
-  L_CHAR  { (S.Char(fst $1), (snd $1)) }
+  L_CHAR  { (SYN.Char(fst $1), (snd $1)) }
 ;
 
 string:
-  L_STRING  { (S.String(fst $1), (snd $1)) }
+  L_STRING  { (SYN.String(fst $1), (snd $1)) }
 ;
 
 /*                          */
