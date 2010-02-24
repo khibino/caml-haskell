@@ -1050,9 +1050,9 @@ let eval_program program =
 
 (*  *)
 let eval_test fn =
-  let prog = load_program (LO.parse_files_with_prelude [fn]) in
+  let prog = load_program (LO.Old.parse_files_with_prelude [fn]) in
     eval_program prog
 
 (*
-  SAH.find (Eval.load_program (Eval.LO.parse_files_with_prelude [fn])).Eval.pdata_assoc.Eval "Main"
+  SAH.find (Eval.load_program (Eval.LO.Old.parse_files_with_prelude [fn])).Eval.pdata_assoc.Eval "Main"
 *)
