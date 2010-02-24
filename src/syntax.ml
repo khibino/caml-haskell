@@ -22,7 +22,7 @@ type fixity = (fixity_lnr * int)
 let default_op_fixity = (InfixLeft, 9)
 
 let fixity_str fix =
-  Printf.sprintf "(%s,%d)" (fixity_lnr_string (fst fix)) (snd fix)
+  F.sprintf "(%s,%d)" (fixity_lnr_string (fst fix)) (snd fix)
 
 type tclass = {
   cname : string;
@@ -34,7 +34,7 @@ and context_list =
     TClassCtx of (tclass list)
 
 let tclass_str tc =
-  (Printf.sprintf "(%s %s) => " tc.cname tc.type_var)
+  (F.sprintf "(%s %s) => " tc.cname tc.type_var)
 
 let tclass_context_str =
   function
@@ -201,7 +201,7 @@ struct
         | (x, None) | (None, x) -> x
     in
     let v = op_cons opn fixity tclass in
-      debug_out (Printf.sprintf "op '%s' defined." (op_str_fun v));
+      debug_out (F.sprintf "op '%s' defined." (op_str_fun v));
       v
 
   (* ParsedData への変換 - 解釈中のモジュールが参照しているモジュール *)
@@ -391,7 +391,7 @@ struct
     SAH.add (get_module_buffer id).PBuf.op_typesig_assoc (name_str id) tclass
 
   let class_regist id def =
-    (* debug_out (Printf.sprintf "class_regist: %s" (name_str id)); *)
+    (* debug_out (F.sprintf "class_regist: %s" (name_str id)); *)
     SAH.add (get_module_buffer id).PBuf.tclass_assoc (name_str id) def
 
   let class_find id =
@@ -649,9 +649,9 @@ rpati   ->      pati+1 qconop(r,i) (rpati | pati+1)
                 let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
                   match (aa_fixity, bb_fixity) with
                       ((_, aa_i), _) when aa_i < min_i ->
-                        failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str aa_fixity))
+                        failwith (F.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str aa_fixity))
                     | (_, (_, bb_i)) when bb_i < min_i ->
-                        failwith (Printf.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str bb_fixity))
+                        failwith (F.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str bb_fixity))
                     | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
                         fold_leafs (patf_cons (scanned_op2pat op_aa_wl patAA patBB) op_bb_wl rest)
                     | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
@@ -661,7 +661,7 @@ rpati   ->      pati+1 qconop(r,i) (rpati | pati+1)
                     | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
                         patf_cons patAA op_aa_wl (fold_leafs cdr)
                     | _ ->
-                        failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
+                        failwith (F.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
                                     (fixity_str aa_fixity)
                                     (fixity_str bb_fixity))
               end
@@ -1150,7 +1150,7 @@ struct
                 (* 演算子の優先順位を取得するために (current, prelude) as pdata を渡す *)
                 let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
                 let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
-                  (* Printf.printf "(%s, %d) vs (%s, %d)\n" (ID.name_str op_aa) (snd aa_fixity) (ID.name_str op_bb) (snd bb_fixity); *)
+                  (* F.printf "(%s, %d) vs (%s, %d)\n" (ID.name_str op_aa) (snd aa_fixity) (ID.name_str op_bb) (snd bb_fixity); *)
                   match (aa_fixity, bb_fixity) with
                     | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
                         fold_leafs (E.expf_cons (scanned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
@@ -1161,7 +1161,7 @@ struct
                     | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
                         E.expf_cons expAA op_aa_wl (fold_leafs cdr)
                     | _ ->
-                        failwith (Printf.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
+                        failwith (F.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
                                     (fixity_str aa_fixity)
                                     (fixity_str bb_fixity))
               end
@@ -1260,5 +1260,139 @@ struct
   and op2_scan_module pdata =
     function
         (x, y, (z, topdecl_list)) -> (x, y, (z, List.map (op2_scan_topdecl pdata) topdecl_list))
+    
+end
+
+module All =
+struct
+  module PD = ParsedData
+
+  module L = List
+
+  module ID = Identifier
+  module P = Pattern
+  module GD = Guard
+  module D = Decl
+  module DS = DoStmt
+  module E = Expression
+
+  type func = {
+    op2_pat_n : int -> func -> P.pat P.op2list_patf -> P.pat;
+    op2_exp_0 : func -> E.t E.op2list_expf -> E.t;
+  }
+
+  (* P.maptree_op2pat 0 func (maptree_pat func) patf *)
+  (* P.maptree_op2pat 1 func (maptree_pat func) patf *)
+
+  let lastScanBug = ref None
+
+  let rec maptree_exp_top func =
+      function
+          E.Top (exp, x) -> E.Top ((maptree_exp0 func exp), x)
+        | x -> lastScanBug := Some x; failwith "Syntax BUG!!"
+
+  and maptree_exp10 func exp10 =
+    (*  *)
+    let maptree_atom_exp func =
+      function
+          E.ParenE exp -> E.ParenE (maptree_exp_top func exp)
+        | E.TupleE elist -> E.TupleE (L.map (fun exp -> maptree_exp_top func exp) elist)
+        | E.ListE elist -> E.ListE (L.map (fun exp -> maptree_exp_top func exp) elist)
+        | x -> x
+    in
+    (*  *)
+    let rec maptree_fun_exp func =
+      function
+          E.FfunE aexp -> E.FfunE (maptree_atom_exp func aexp)
+        | E.FappE (fexp, aexp) -> E.FappE (maptree_fun_exp func fexp, maptree_atom_exp func aexp)
+        | E.FappEID -> failwith "Syntax BUG!!. FappEID found."
+    in
+    match exp10 with
+        E.LambdaE (x, exp) -> E.LambdaE (x, maptree_exp_top func exp)
+      | E.LetE (decl_list, exp) -> E.LetE (L.map (maptree_decl func) decl_list, maptree_exp_top func exp)
+      | E.IfE (pred, t, f) -> E.IfE (maptree_exp_top func pred, maptree_exp_top func t, maptree_exp_top func f)
+      | E.CaseE (exp, x) -> E.CaseE (maptree_exp_top func exp, x)
+      | E.DoE (stmt_list, exp) -> E.DoE (L.map (maptree_do_stmt func) stmt_list, maptree_exp_top func exp)
+      | E.FexpE fexp -> E.FexpE (maptree_fun_exp func fexp)
+      | x -> x
+
+  and maptree_exp0 func =
+      function
+          E.Exp0 exp0 -> (func.op2_exp_0 func exp0)
+        | x -> x
+
+  and maptree_do_stmt func stmt =
+    match stmt with
+        DS.Exp (exp) -> DS.Exp (maptree_exp_top func exp)
+      | DS.Cons (pat, exp) -> DS.Cons (maptree_pat func pat, maptree_exp_top func exp)
+      | DS.Let (dlist) -> DS.Let (List.map (maptree_decl func) dlist)
+      | DS.Empty -> DS.Empty
+
+  and maptree_pat func =
+    let rec  maptree_atompat func =
+      function
+          P.AsP (id, p) -> P.AsP (id, maptree_pat func p)
+        | P.ConP (id, plist) -> P.ConP (id, L.map (fun p0 -> maptree_pat func p0) plist)
+        | P.LabelP (id, idp_list) -> P.LabelP (id, (L.map (fun (id, p0) -> (id, maptree_pat func p0)) idp_list))
+        | P.TupleP (plist) -> P.TupleP (L.map (fun p0 -> maptree_pat func p0) plist)
+        | P.ListP  (plist) -> P.ListP  (L.map (fun p0 -> maptree_pat func p0) plist)
+        | P.Irref (p) -> P.Irref (maptree_pat func p)
+        | x -> x
+    in
+      function
+        | P.Pat0 (patf) -> func.op2_pat_n 0 func patf
+        | P.Pat1 (patf) -> func.op2_pat_n 1 func patf
+        | p -> maptree_atompat func p
+
+  and maptree_funlhs func =
+    function
+        D.FunLV (var, pat_list) ->
+          D.FunLV (var, L.map (fun p -> maptree_pat func p) pat_list)
+      | D.Op2Fun (varop, (pat_aa, pat_bb)) ->
+          D.Op2Fun (varop, (maptree_pat func pat_aa, maptree_pat func pat_bb))
+      | D.NestDec (lhs, pat_list) ->
+          D.NestDec (maptree_funlhs func lhs, L.map (fun p -> maptree_pat func p) pat_list)
+
+  and maptree_guard func =
+    function
+        (GD.Guard gde, exp) -> (GD.Guard (maptree_exp0 func gde), maptree_exp_top func exp)
+
+  and maptree_rhs func =
+      function
+          D.Rhs (exp, None) -> D.Rhs (maptree_exp_top func exp, None)
+        | D.Rhs (exp, Some exp_decl_list) -> D.Rhs (maptree_exp_top func exp, Some (L.map (maptree_decl func) exp_decl_list))
+        | D.RhsWithGD (gdrhs_list, None) -> D.RhsWithGD (L.map (maptree_guard func) gdrhs_list, None)
+        | D.RhsWithGD (gdrhs_list, Some exp_decl_list) -> D.RhsWithGD (L.map (maptree_guard func) gdrhs_list, Some (List.map (maptree_decl func) exp_decl_list))
+
+  and maptree_decl func =
+    function
+        D.FunDec deflist -> D.FunDec (L.map (fun (lhs, rhs) -> (maptree_funlhs func lhs), (maptree_rhs func rhs)) deflist)
+      | D.PatBind (pat, rhs) -> D.PatBind ((maptree_pat func pat), (maptree_rhs func rhs))
+      | x -> x
+
+  and maptree_cdecl func tcls =
+    function
+        D.FunDecC deflist -> D.FunDecC (L.map (fun (lhs, rhs) -> (maptree_funlhs func lhs), (maptree_rhs func rhs)) deflist)
+      | x -> x
+
+  and maptree_idecl func tcls =
+    function
+        D.FunDecI deflist -> D.FunDecI (L.map (fun (lhs, rhs) -> (maptree_funlhs func lhs), (maptree_rhs func rhs)) deflist)
+      | x -> x
+
+  and maptree_topdecl func =
+    function 
+        D.Decl d -> D.Decl (maptree_decl func d)
+      | D.Class (ctx, ((cls, _) as cls_wl), x, cdecl_list) ->
+          let new_cdecl_list = List.map (fun cdecl -> maptree_cdecl func (ID.class_find cls) cdecl) cdecl_list in
+            D.Class (ctx, cls_wl, x, new_cdecl_list)
+      | D.Instance (ctx, ((cls, _) as cls_wl), x, idecl_list) ->
+          let new_idecl_list = List.map (fun idecl -> maptree_idecl func (ID.class_find cls) idecl) idecl_list in
+            D.Instance (ctx, cls_wl, x, new_idecl_list)
+      | x -> x
+
+  and maptree_module func =
+    function
+        (x, y, (z, topdecl_list)) -> (x, y, (z, List.map (maptree_topdecl func) topdecl_list))
     
 end

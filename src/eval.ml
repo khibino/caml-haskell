@@ -22,6 +22,7 @@ module C = SYN.Constructor
 module P = SYN.Pattern
 module E = SYN.Expression
 
+module SYA = SYN.All
 
 let create_symtab () = H.create 32
 
@@ -34,12 +35,111 @@ let program_pre_op2 progbuf id =
   let lsym = ID.long_sym id in
     if H.mem progbuf lsym then
       H.find progbuf lsym
-    else SYN.default_op_fixity
+    else (SYN.default_op_fixity, None)
 
 let program_pre_op2_def progbuf id ((fixity, tcls) as op2) =
   let lsym = ID.long_sym id in
     if H.mem progbuf lsym then failwith ("already found fixity: " ^ (S.name lsym))
     else H.add progbuf lsym op2
+
+let list2term_func preprog =
+  
+  let rec patlist2term min_i func list =
+    let pat_fun = SYA.maptree_pat func in
+
+    let rec fold_leafs list =
+      let scanned_op2pat op patAA patBB =
+        P.ConOp2P (op,
+                   pat_fun patAA,
+                   pat_fun patBB) in
+        
+        match list with
+          | P.PatF (pat, P.Op2End) ->
+              P.uni_pat (pat_fun pat)
+          | P.PatF (patAA, P.Op2F (op_aa_wl, (P.PatF (patBB, P.Op2End)))) ->
+              P.uni_pat (scanned_op2pat op_aa_wl patAA patBB)
+          | P.PatF (patAA, P.Op2F ((op_aa, _) as op_aa_wl, ((P.PatF (patBB, P.Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
+              begin
+                let (aa_fixity, _) = program_pre_op2 preprog op_aa in
+                let (bb_fixity, _) = program_pre_op2 preprog op_bb in
+                  match (aa_fixity, bb_fixity) with
+                      ((_, aa_i), _) when aa_i < min_i ->
+                        failwith (F.sprintf "Pat%d cannot involve fixity %s operator." min_i (SYN.fixity_str aa_fixity))
+                    | (_, (_, bb_i)) when bb_i < min_i ->
+                        failwith (F.sprintf "Pat%d cannot involve fixity %s operator." min_i (SYN.fixity_str bb_fixity))
+                    | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
+                        fold_leafs (P.patf_cons (scanned_op2pat op_aa_wl patAA patBB) op_bb_wl rest)
+                    | ((SYN.InfixLeft, aa_i), (SYN.InfixLeft, bb_i)) when aa_i = bb_i ->
+                        fold_leafs (P.patf_cons (scanned_op2pat op_aa_wl patAA patBB) op_bb_wl rest)
+                    | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
+                        P.patf_cons patAA op_aa_wl (fold_leafs cdr)
+                    | ((SYN.InfixRight, aa_i), (SYN.InfixRight, bb_i)) when aa_i = bb_i ->
+                        P.patf_cons patAA op_aa_wl (fold_leafs cdr)
+                    | _ ->
+                        failwith (F.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
+                                    (SYN.fixity_str aa_fixity)
+                                    (SYN.fixity_str bb_fixity))
+              end
+          | _ -> failwith "Arity 2 operator pattern syntax error."
+    in
+      match fold_leafs list with
+        | P.PatF (pat, P.Op2End) -> pat
+        | P.PatF (pat, P.Op2F (_, P.Op2NoArg)) -> failwith "scan_op2pat: section not implemented."
+        | folded -> patlist2term min_i func folded
+  in
+
+  let rec explist2term func list =
+    let exp10_fun = SYA.maptree_exp10 func in
+
+    let rec fold_leafs list =
+      let scanned_op2exp op expAA expBB =
+        E.VarOp2E (op,
+                   exp10_fun expAA,
+                   exp10_fun expBB) in
+        match list with
+          | E.ExpF (exp, E.Op2End) -> (* list *)
+              E.uni_exp (exp10_fun exp)
+          | E.ExpF (expAA, E.Op2F (op_aa,
+                                   (E.ExpF (expBB, E.Op2End)))) ->
+              E.uni_exp (scanned_op2exp op_aa expAA expBB)
+          | E.ExpF (expAA, E.Op2F ((op_aa, _) as op_aa_wl,
+                                   ((E.ExpF (expBB, E.Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
+              begin
+                let (aa_fixity, _) = program_pre_op2 preprog op_aa in
+                let (bb_fixity, _) = program_pre_op2 preprog op_bb in
+                  (* F.printf "(%s, %d) vs (%s, %d)\n" (ID.name_str op_aa) (snd aa_fixity) (ID.name_str op_bb) (snd bb_fixity); *)
+                  match (aa_fixity, bb_fixity) with
+                    | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
+                        fold_leafs (E.expf_cons (scanned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
+                    | ((SYN.InfixLeft, aa_i), (SYN.InfixLeft, bb_i)) when aa_i = bb_i ->
+                        fold_leafs (E.expf_cons (scanned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
+                    | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
+                        E.expf_cons expAA op_aa_wl (fold_leafs cdr)
+                    | ((SYN.InfixRight, aa_i), (SYN.InfixRight, bb_i)) when aa_i = bb_i ->
+                        E.expf_cons expAA op_aa_wl (fold_leafs cdr)
+                    | _ ->
+                        failwith (F.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
+                                    (SYN.fixity_str aa_fixity)
+                                    (SYN.fixity_str bb_fixity))
+              end
+          | _ -> failwith "Arity 2 operator expression syntax error."
+    in
+      match fold_leafs list with
+        | E.ExpF (exp, E.Op2End) -> exp
+        | E.ExpF (exp, E.Op2F (_, E.Op2NoArg)) -> failwith "explist2term: section not implemented."
+        | folded -> explist2term func folded
+            (*
+            (* TODO: The same form section scan function *)
+              and explist2term_rsec func rs_list =
+              match rs_list with
+              E.Op2End -> exp10_fun exp
+              | E.Op2F (op_aa, (E.ExpF (expBB, E.Op2End))) ->
+              ...
+            *)
+  in
+    { SYA.op2_pat_n = patlist2term;
+      SYA.op2_exp_0 = explist2term;
+    }
 
 type export_buffer = {
   export_module : (S.t, bool) H.t;

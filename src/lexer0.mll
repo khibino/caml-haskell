@@ -5,7 +5,7 @@
   module F = Printf
 
   let dump_position pos =
-    Printf.sprintf "(%d, %d, %d, %d)" pos.LX.pos_lnum (pos.LX.pos_cnum - pos.LX.pos_bol) pos.LX.pos_cnum pos.LX.pos_bol
+    F.sprintf "(%d, %d, %d, %d)" pos.LX.pos_lnum (pos.LX.pos_cnum - pos.LX.pos_bol) pos.LX.pos_cnum pos.LX.pos_bol
 
   let fix_position lexbuf =
     let newline pos =
@@ -37,7 +37,7 @@
 (*     let before = dump_position lexbuf.LX.lex_curr_p in *)
     let _ = lexbuf.LX.lex_curr_p <- fix_pos_rec (LX.lexeme_start_p lexbuf) (LX.lexeme lexbuf) in
 (*     let after = dump_position lexbuf.LX.lex_curr_p in *)
-(*     let _ = Printf.fprintf stdout "%s -> %s\n" before after in *)
+(*     let _ = F.fprintf stdout "%s -> %s\n" before after in *)
       ()
 
   let loc lexbuf =
