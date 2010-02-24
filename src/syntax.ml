@@ -7,7 +7,7 @@ module S = Symbol
 type ('k, 'v) ordh = ('k, 'v) OH.t
 
 type fixity_lnr =
-    Infix
+  | Infix
   | InfixLeft
   | InfixRight
       
@@ -301,9 +301,15 @@ struct
     match qual id with
       | Q m | Unq m -> m
 
+  let pair_sym id =
+    (qual_sym id, short_sym id)
+
+  let long_name id =
+    (S.name (qual_sym id)) ^ "."
+    ^ (S.name (short_sym id))
+
   let long_sym id =
-    S.intern ((S.name (qual_sym id)) ^ "."
-              ^ (S.name (short_sym id)))
+    S.intern (long_name id)
 
   let to_sym id =
     match qual id with
@@ -806,33 +812,33 @@ struct
   type mod_data = PD.module_data
 
   type gendecl =
-      TypeSig of (ID.idwl list * Context.context option * Type.typ)
+    | TypeSig of (ID.idwl list * Context.context option * Type.typ)
     | Fixity of (fixity * ID.idwl list)
     | Empty
 
   type 'exp decl =
-      GenDecl of gendecl
+    | GenDecl of gendecl
     | FunDec of (('exp funlhs * 'exp rhs) list)
     | PatBind of (P.pat * 'exp rhs)
 
   (* Instance *)
   and 'exp i =
-      FunDecI of (('exp funlhs * 'exp rhs) list)
+    | FunDecI of (('exp funlhs * 'exp rhs) list)
     | BindI of (ID.idwl * 'exp rhs)
     | EmptyI
 
   (* Class *)
   and 'exp c =
-      GenDeclC of gendecl
+    | GenDeclC of gendecl
     | FunDecC of (('exp funlhs * 'exp rhs) list)
     | BindC of (ID.idwl * 'exp rhs)
 
   and 'exp rhs =
-      Rhs of ('exp * 'exp decl list option)
+    | Rhs of ('exp * 'exp decl list option)
     | RhsWithGD of ('exp gdrhs * 'exp decl list option)
 
   and 'exp funlhs =
-      FunLV of (ID.idwl * P.pat list)
+    | FunLV of (ID.idwl * P.pat list)
     | Op2Fun of (ID.idwl * (P.pat * P.pat))
     | NestDec of ('exp funlhs * P.pat list)
 
@@ -846,7 +852,7 @@ struct
       Op2Fun (op_wl, (P.Pat1 (op2lhs_left lhsd), P.Pat1 (op2lhs_right lhsd)))
 
   type 'exp top =
-      Type of (Type.typ * Type.typ)
+    | Type of (Type.typ * Type.typ)
     | Data of (Context.context * Type.typ * Constructor.con list * ID.idwl list)
     | NewType of (Context.context * Type.typ * Constructor.newcon * ID.idwl list)
     | Class of (Context.context * ID.idwl * ID.idwl * 'exp c list)

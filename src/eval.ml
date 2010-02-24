@@ -23,6 +23,37 @@ module P = SYN.Pattern
 module E = SYN.Expression
 
 
+let create_symtab () = H.create 32
+
+type program_pre_buffer = (S.t, SYN.fixity * S.t option) H.t
+
+let program_pre_buffer () : program_pre_buffer = 
+  create_symtab ()
+
+let program_pre_op2 progbuf id =
+  let lsym = ID.long_sym id in
+    if H.mem progbuf lsym then
+      H.find progbuf lsym
+    else SYN.default_op_fixity
+
+let program_pre_op2_def progbuf id ((fixity, tcls) as op2) =
+  let lsym = ID.long_sym id in
+    if H.mem progbuf lsym then failwith ("already found fixity: " ^ (S.name lsym))
+    else H.add progbuf lsym op2
+
+type export_buffer = {
+  export_module : (S.t, bool) H.t;
+  export : (S.t, bool) H.t;
+}
+
+let export_buffer () = {
+  export_module = create_symtab ();
+  export = create_symtab ();
+}
+
+let export_export_module exbuf = exbuf.export_module
+let export_export exbuf = exbuf.export
+
 type syntax_tree_t = (ID.symwl * M.export list * (M.impdecl list * E.t D.top list))
 
 type lambda_t = {
@@ -50,7 +81,7 @@ and value_t =
 and thunk_t = unit -> value_t
 
 and pre_value_t =
-    Thunk of (unit -> value_t) (* thunk_t と同じ型になっているのは偶然であることに注意 *)
+  | Thunk of (unit -> value_t) (* thunk_t と同じ型になっているのは偶然であることに注意 *)
   | Thawed of value_t
 
 and scope_t = (S.t, thunk_t) H.t
@@ -62,12 +93,6 @@ and env_t = {
 }
 
 (* and eval_buffer = env_t *)
-
-let create_symtab () = H.create 32
-
-(* let gPrelude = ref (Some "Prelude") *)
-(* The first Syntax.ParseBuffer.t used when loading Prelude.hs *)
-(* let gPreludeBuf = PBuf.create () *)
 
 let simple_cons name = Cons (ID.qualid SYN.the_prelude_symbol (S.intern name), [])
 
@@ -246,19 +271,6 @@ let program_module_buffer program modsym =
 
 let qualified_sym q n =
   S.intern ((S.name q) ^ "." ^ (S.name n))
-
-type export_buffer = {
-  export_module : (S.t, bool) H.t;
-  export : (S.t, bool) H.t;
-}
-
-let export_buffer () = {
-  export_module = create_symtab ();
-  export = create_symtab ();
-}
-
-let export_export_module exbuf = exbuf.export_module
-let export_export exbuf = exbuf.export
 
 let lastLoadProgram : syntax_tree_t program_buffer option ref = ref None
 
@@ -761,8 +773,8 @@ let eval_data_simple env typ =
 
 let (lastEvalDecl : E.t D.decl option ref) = ref None
 
-let eval_topdecl env tdecl =
-  match tdecl with
+let eval_topdecl env =
+  function
     | D.Type (_) -> ()
     | D.Data (_, typ, cons_ls, _) ->
         let _ = L.map (fun cons -> eval_data_simple env typ cons) cons_ls in
@@ -778,6 +790,39 @@ let eval_topdecl env tdecl =
     | D.Decl d ->
         let _ = eval_decl env d in
           lastEvalDecl := Some d
+
+let pre_eval_gendecl env prog_pre clsopt =
+  function
+    | D.TypeSig (_) -> ()
+    | D.Fixity ((lnr, pri) as fixity, op_list) ->
+        let _ =
+          L.map
+            (fun (op, _) ->
+               program_pre_op2_def prog_pre op (fixity, clsopt))
+            op_list in
+          ()
+    | D.Empty -> ()
+            
+let pre_eval_topdevl env prog_pre =
+  function
+    | D.Type (_) -> ()
+    | D.Data (_, typ, cons_ls, _) ->
+        ()
+    | D.NewType (_) -> ()
+    | D.Class (_, _, (clsid, _), cdecl_list) ->
+        let _ = L.map
+          (fun cd ->
+             match cd with
+               | D.GenDeclC g -> pre_eval_gendecl env prog_pre (Some clsid) g
+               | _ -> ())
+          cdecl_list in
+          ()
+    | D.Instance (_, _, _, idecl_list) ->
+        ()
+    | D.Default (_) -> ()
+    | D.Decl (D.GenDecl g) -> pre_eval_gendecl env prog_pre None g
+    | D.Decl (_) -> ()
+        
 
 let eval_export exbuf env =
   let (modex, ex) =
@@ -887,8 +932,6 @@ let eval_program program =
   let exbuf =
     SaHt.fold
       (fun name modbuf exbuf ->
-         (* if name = "Prelude" then () else *)
-         (* eval_module exbuf env modbuf.code.PD.syntax *)
          eval_module exbuf modbuf)
       program
       exbuf
