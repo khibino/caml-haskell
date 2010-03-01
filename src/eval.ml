@@ -26,121 +26,6 @@ module SYA = SYN.All
 
 let create_symtab () = H.create 32
 
-type program_pre_buffer = (S.t, SYN.fixity * S.t option) H.t
-
-let program_pre_buffer () : program_pre_buffer = 
-  create_symtab ()
-
-let program_pre_op2 progbuf id =
-  let lsym = ID.long_sym id in
-    if H.mem progbuf lsym then
-      H.find progbuf lsym
-    else (SYN.default_op_fixity, None)
-
-let program_pre_op2_def progbuf id ((fixity, tcls) as op2) =
-  let lsym = ID.long_sym id in
-    if H.mem progbuf lsym then failwith ("already found fixity: " ^ (S.name lsym))
-    else H.add progbuf lsym op2
-
-let list2term_func preprog =
-  
-  let rec patlist2term min_i func list =
-    let pat_fun = SYA.maptree_pat func in
-
-    let rec fold_leafs list =
-      let scanned_op2pat op patAA patBB =
-        P.ConOp2P (op,
-                   pat_fun patAA,
-                   pat_fun patBB) in
-        
-        match list with
-          | P.PatF (pat, P.Op2End) ->
-              P.uni_pat (pat_fun pat)
-          | P.PatF (patAA, P.Op2F (op_aa_wl, (P.PatF (patBB, P.Op2End)))) ->
-              P.uni_pat (scanned_op2pat op_aa_wl patAA patBB)
-          | P.PatF (patAA, P.Op2F ((op_aa, _) as op_aa_wl, ((P.PatF (patBB, P.Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
-              begin
-                let (aa_fixity, _) = program_pre_op2 preprog op_aa in
-                let (bb_fixity, _) = program_pre_op2 preprog op_bb in
-                  match (aa_fixity, bb_fixity) with
-                      ((_, aa_i), _) when aa_i < min_i ->
-                        failwith (F.sprintf "Pat%d cannot involve fixity %s operator." min_i (SYN.fixity_str aa_fixity))
-                    | (_, (_, bb_i)) when bb_i < min_i ->
-                        failwith (F.sprintf "Pat%d cannot involve fixity %s operator." min_i (SYN.fixity_str bb_fixity))
-                    | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-                        fold_leafs (P.patf_cons (scanned_op2pat op_aa_wl patAA patBB) op_bb_wl rest)
-                    | ((SYN.InfixLeft, aa_i), (SYN.InfixLeft, bb_i)) when aa_i = bb_i ->
-                        fold_leafs (P.patf_cons (scanned_op2pat op_aa_wl patAA patBB) op_bb_wl rest)
-                    | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-                        P.patf_cons patAA op_aa_wl (fold_leafs cdr)
-                    | ((SYN.InfixRight, aa_i), (SYN.InfixRight, bb_i)) when aa_i = bb_i ->
-                        P.patf_cons patAA op_aa_wl (fold_leafs cdr)
-                    | _ ->
-                        failwith (F.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
-                                    (SYN.fixity_str aa_fixity)
-                                    (SYN.fixity_str bb_fixity))
-              end
-          | _ -> failwith "Arity 2 operator pattern syntax error."
-    in
-      match fold_leafs list with
-        | P.PatF (pat, P.Op2End) -> pat
-        | P.PatF (pat, P.Op2F (_, P.Op2NoArg)) -> failwith "scan_op2pat: section not implemented."
-        | folded -> patlist2term min_i func folded
-  in
-
-  let rec explist2term func list =
-    let exp10_fun = SYA.maptree_exp10 func in
-
-    let rec fold_leafs list =
-      let scanned_op2exp op expAA expBB =
-        E.VarOp2E (op,
-                   exp10_fun expAA,
-                   exp10_fun expBB) in
-        match list with
-          | E.ExpF (exp, E.Op2End) -> (* list *)
-              E.uni_exp (exp10_fun exp)
-          | E.ExpF (expAA, E.Op2F (op_aa,
-                                   (E.ExpF (expBB, E.Op2End)))) ->
-              E.uni_exp (scanned_op2exp op_aa expAA expBB)
-          | E.ExpF (expAA, E.Op2F ((op_aa, _) as op_aa_wl,
-                                   ((E.ExpF (expBB, E.Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
-              begin
-                let (aa_fixity, _) = program_pre_op2 preprog op_aa in
-                let (bb_fixity, _) = program_pre_op2 preprog op_bb in
-                  (* F.printf "(%s, %d) vs (%s, %d)\n" (ID.name_str op_aa) (snd aa_fixity) (ID.name_str op_bb) (snd bb_fixity); *)
-                  match (aa_fixity, bb_fixity) with
-                    | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-                        fold_leafs (E.expf_cons (scanned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
-                    | ((SYN.InfixLeft, aa_i), (SYN.InfixLeft, bb_i)) when aa_i = bb_i ->
-                        fold_leafs (E.expf_cons (scanned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
-                    | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-                        E.expf_cons expAA op_aa_wl (fold_leafs cdr)
-                    | ((SYN.InfixRight, aa_i), (SYN.InfixRight, bb_i)) when aa_i = bb_i ->
-                        E.expf_cons expAA op_aa_wl (fold_leafs cdr)
-                    | _ ->
-                        failwith (F.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
-                                    (SYN.fixity_str aa_fixity)
-                                    (SYN.fixity_str bb_fixity))
-              end
-          | _ -> failwith "Arity 2 operator expression syntax error."
-    in
-      match fold_leafs list with
-        | E.ExpF (exp, E.Op2End) -> exp
-        | E.ExpF (exp, E.Op2F (_, E.Op2NoArg)) -> failwith "explist2term: section not implemented."
-        | folded -> explist2term func folded
-            (*
-            (* TODO: The same form section scan function *)
-              and explist2term_rsec func rs_list =
-              match rs_list with
-              E.Op2End -> exp10_fun exp
-              | E.Op2F (op_aa, (E.ExpF (expBB, E.Op2End))) ->
-              ...
-            *)
-  in
-    { SYA.op2_pat_n = patlist2term;
-      SYA.op2_exp_0 = explist2term;
-    }
-
 type export_buffer = {
   export_module : (S.t, bool) H.t;
   export : (S.t, bool) H.t;
@@ -192,7 +77,6 @@ and env_t = {
   top_scope : scope_t;
 }
 
-(* and eval_buffer = env_t *)
 
 let simple_cons name = Cons (ID.qualid SYN.the_prelude_symbol (S.intern name), [])
 
@@ -324,8 +208,7 @@ let primTable =
 
 
 
-(* let eval_buffer_create prog = *)
-let env_create pd : env_t =
+let env_create syntax : env_t =
   let top = create_symtab () in
     {
       symtabs = [ top ];
@@ -340,20 +223,26 @@ let env_top_symtab env =
   (* L.hd (L.rev (env_tablist env)) *)
   env.top_scope
 
+let local_env env =
+  let tab = env.symtabs in
+  let n = H.copy (L.hd tab) in
+    { env with symtabs = n :: tab }
+
 type import_module_t = (M.qual * S.t * S.t option * M.impspec option)
 
 (* モジュールの評価環境 *)
 type 'syntax_tree module_buffer = {
-  code : 'syntax_tree PD.t;
+  code : 'syntax_tree;
   env : env_t;
   import_module : (S.t, import_module_t) H.t;
+  fixity : (S.t, SYN.fixity * S.t option) H.t;
 }
 
-let module_buffer pd = {
-  code = pd;
-  env = env_create pd;
+let module_buffer syntax = {
+  code = syntax;
+  env = env_create syntax;
   import_module = create_symtab ();
-  (* import = create_symtab (); *)
+  fixity = create_symtab ();
 }
 
 (* *)
@@ -361,6 +250,7 @@ let module_buffer pd = {
 let module_code modbuf = modbuf.code
 let module_env modbuf = modbuf.env
 let module_import_module modbuf = modbuf.import_module
+let module_fixity modbuf = modbuf.fixity
 (* let import_module modbuf = modbuf.import *)
 
 (* プログラム全体の評価環境 - プログラムはモジュールの集合 *)
@@ -372,31 +262,158 @@ let program_module_buffer program modsym =
 let qualified_sym q n =
   S.intern ((S.name q) ^ "." ^ (S.name n))
 
+(* let program_op2fixity program id = *)
+(*   let ID.short id *)
+
 let lastLoadProgram : syntax_tree_t program_buffer option ref = ref None
 
-let load_program pdata_queue =
+let load_program syntax_list =
   let prog = SaHt.create
     S.name
     (fun _ -> "<mod>")
-    (Some (fun x -> "Already loaded module: " ^ x))
+    (Some (fun x -> "Already loaded module (before fixity resolve): " ^ x))
     None (* (fun ks vs -> ks ^ " => " ^ vs) *)
-    "<program buffer>"
+    "<program buffer before fixity resolve>"
   in
-  let _ = Q.iter (fun pdata -> SaHt.add prog (PD.local_module_sym pdata) (module_buffer pdata)) pdata_queue in
+  let _ = L.iter (fun (((modsym, _), _, _) as syntax) ->
+                    SaHt.add prog modsym (module_buffer syntax)) syntax_list in
   let _ = (lastLoadProgram := Some prog) in
     prog
 
-(* let env_create pd : env_t =
-  (eval_buffer_create pd) :: [] *)
+let default_fixity = (SYN.default_op_fixity, None)
 
-let local_env env =
-  let tab = env.symtabs in
-  let n = H.copy (L.hd tab) in
-    { env with symtabs = n :: tab }
+let h_find_fixity =
+  (fun ht k ->
+     if H.mem ht k then  H.find ht k
+     else default_fixity)
+
+let eval_op2_fixity modbuf id =
+  let ftab = module_fixity modbuf in
+    match ID.qual id with
+      | ID.Q m ->
+          let long = ID.long_sym id in
+            h_find_fixity ftab long
+      | _ ->
+          let short = (ID.short_sym id) in
+            h_find_fixity ftab short
+
+let bind_op2_fixity modbuf id ((fixity, tcls) as op2) =
+  let ftab = module_fixity modbuf in
+    (H.add ftab (ID.long_sym id) op2,
+     H.add ftab (ID.short_sym id) op2)
+
+let global_fixity program modsym sym =
+  let modbuf = program_module_buffer program modsym in
+  let ftab = module_fixity modbuf in
+    h_find_fixity ftab sym
+
+let bind_import_fixity ftab program is_qual modsym sym fixity =
+  let _ = if not is_qual then H.add ftab sym fixity in
+    H.add ftab (qualified_sym modsym sym) fixity
+
+let list2term_func modbuf =
+  
+  let rec patlist2term min_i func list =
+    let pat_fun = SYA.maptree_pat func in
+
+    let rec fold_leafs list =
+      let scanned_op2pat op patAA patBB =
+        P.ConOp2P (op,
+                   pat_fun patAA,
+                   pat_fun patBB) in
+        
+        match list with
+          | P.PatF (pat, P.Op2End) ->
+              P.uni_pat (pat_fun pat)
+          | P.PatF (patAA, P.Op2F (op_aa_wl, (P.PatF (patBB, P.Op2End)))) ->
+              P.uni_pat (scanned_op2pat op_aa_wl patAA patBB)
+          | P.PatF (patAA, P.Op2F ((op_aa, _) as op_aa_wl, ((P.PatF (patBB, P.Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
+              begin
+                let (aa_fixity, _) = eval_op2_fixity modbuf op_aa in
+                let (bb_fixity, _) = eval_op2_fixity modbuf op_bb in
+                  match (aa_fixity, bb_fixity) with
+                      ((_, aa_i), _) when aa_i < min_i ->
+                        failwith (F.sprintf "Pat%d cannot involve fixity %s operator." min_i (SYN.fixity_str aa_fixity))
+                    | (_, (_, bb_i)) when bb_i < min_i ->
+                        failwith (F.sprintf "Pat%d cannot involve fixity %s operator." min_i (SYN.fixity_str bb_fixity))
+                    | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
+                        fold_leafs (P.patf_cons (scanned_op2pat op_aa_wl patAA patBB) op_bb_wl rest)
+                    | ((SYN.InfixLeft, aa_i), (SYN.InfixLeft, bb_i)) when aa_i = bb_i ->
+                        fold_leafs (P.patf_cons (scanned_op2pat op_aa_wl patAA patBB) op_bb_wl rest)
+                    | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
+                        P.patf_cons patAA op_aa_wl (fold_leafs cdr)
+                    | ((SYN.InfixRight, aa_i), (SYN.InfixRight, bb_i)) when aa_i = bb_i ->
+                        P.patf_cons patAA op_aa_wl (fold_leafs cdr)
+                    | _ ->
+                        failwith (F.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
+                                    (SYN.fixity_str aa_fixity)
+                                    (SYN.fixity_str bb_fixity))
+              end
+          | _ -> failwith "Arity 2 operator pattern syntax error."
+    in
+      match fold_leafs list with
+        | P.PatF (pat, P.Op2End) -> pat
+        | P.PatF (pat, P.Op2F (_, P.Op2NoArg)) -> failwith "scan_op2pat: section not implemented."
+        | folded -> patlist2term min_i func folded
+  in
+
+  let rec explist2term func list =
+    let exp10_fun = SYA.maptree_exp10 func in
+
+    let rec fold_leafs list =
+      let scanned_op2exp op expAA expBB =
+        E.VarOp2E (op,
+                   exp10_fun expAA,
+                   exp10_fun expBB) in
+        match list with
+          | E.ExpF (exp, E.Op2End) -> (* list *)
+              E.uni_exp (exp10_fun exp)
+          | E.ExpF (expAA, E.Op2F (op_aa,
+                                   (E.ExpF (expBB, E.Op2End)))) ->
+              E.uni_exp (scanned_op2exp op_aa expAA expBB)
+          | E.ExpF (expAA, E.Op2F ((op_aa, _) as op_aa_wl,
+                                   ((E.ExpF (expBB, E.Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
+              begin
+                let (aa_fixity, _) = eval_op2_fixity modbuf op_aa in
+                let (bb_fixity, _) = eval_op2_fixity modbuf op_bb in
+                  (* F.printf "(%s, %d) vs (%s, %d)\n" (ID.name_str op_aa) (snd aa_fixity) (ID.name_str op_bb) (snd bb_fixity); *)
+                  match (aa_fixity, bb_fixity) with
+                    | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
+                        fold_leafs (E.expf_cons (scanned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
+                    | ((SYN.InfixLeft, aa_i), (SYN.InfixLeft, bb_i)) when aa_i = bb_i ->
+                        fold_leafs (E.expf_cons (scanned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
+                    | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
+                        E.expf_cons expAA op_aa_wl (fold_leafs cdr)
+                    | ((SYN.InfixRight, aa_i), (SYN.InfixRight, bb_i)) when aa_i = bb_i ->
+                        E.expf_cons expAA op_aa_wl (fold_leafs cdr)
+                    | _ ->
+                        failwith (F.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
+                                    (SYN.fixity_str aa_fixity)
+                                    (SYN.fixity_str bb_fixity))
+              end
+          | _ -> failwith "Arity 2 operator expression syntax error."
+    in
+      match fold_leafs list with
+        | E.ExpF (exp, E.Op2End) -> exp
+        | E.ExpF (exp, E.Op2F (_, E.Op2NoArg)) -> failwith "explist2term: section not implemented."
+        | folded -> explist2term func folded
+            (*
+            (* TODO: The same form section scan function *)
+              and explist2term_rsec func rs_list =
+              match rs_list with
+              E.Op2End -> exp10_fun exp
+              | E.Op2F (op_aa, (E.ExpF (expBB, E.Op2End))) ->
+              ...
+            *)
+  in
+    { SYA.module_buffer = modbuf;
+      SYA.op2_pat_n = patlist2term;
+      SYA.op2_exp_0 = explist2term;
+    }
 
 let debug = true
 
-let h_find err_fun =
+let h_find_err err_fun =
   if debug then
     (fun ht k ->
        if H.mem ht k then
@@ -405,24 +422,23 @@ let h_find err_fun =
          err_fun ())
   else H.find
 
-let eval_sym_with_tab tab sym =
-  let err = (fun () -> failwith (F.sprintf "eval_sym: %s not found." (S.name sym))) in
-    h_find err tab sym
+let eval_sym_with_tab func_name tab sym =
+  let err = (fun () -> failwith (F.sprintf "%s: %s not found." func_name (S.name sym))) in
+    h_find_err err tab sym
+
+let bind_value_to_tab tab sym value =
+  H.add tab sym value
 
 let eval_id_with_env env id =
   match ID.qual id with
     | ID.Q m ->
-        (* eval_sym_with_tab (env_symtab env) (ID.long_sym id) *)
         (* let _ = F.printf "DEBUG: Qual %s\n" (S.name (ID.long_sym id)) in *)
-        eval_sym_with_tab (env_top_symtab env) (ID.long_sym id)
+        eval_sym_with_tab "eval_id: qual" (env_top_symtab env) (ID.long_sym id)
     | _ ->
         (* let _ = F.printf "DEBUG: Unqu %s\n" (S.name (ID.long_sym id)) in *)
         let short = (ID.short_sym id) in
         let lenv  = (env_symtab env) in
-          eval_sym_with_tab lenv short
-
-let bind_value_to_tab tab sym value =
-  H.add tab sym value
+          eval_sym_with_tab "eval_id: unqual" lenv short
 
 let bind_thunk_to_env env id thunk =
   match env_tablist env with
@@ -445,7 +461,7 @@ let module_top_tab program modsym =
 
 let global_value program modsym sym =
   let top_tab = module_top_tab program modsym in
-    eval_sym_with_tab top_tab (qualified_sym modsym sym)
+    eval_sym_with_tab "global_value" top_tab (qualified_sym modsym sym)
 
 let bind_import_value env program is_qual modsym sym value =
   let top_tab = env_top_symtab env in
@@ -891,19 +907,19 @@ let eval_topdecl env =
         let _ = eval_decl env d in
           lastEvalDecl := Some d
 
-let pre_eval_gendecl env prog_pre clsopt =
+let fixity_eval_gendecl env modbuf clsopt =
   function
     | D.TypeSig (_) -> ()
     | D.Fixity ((lnr, pri) as fixity, op_list) ->
         let _ =
           L.map
             (fun (op, _) ->
-               program_pre_op2_def prog_pre op (fixity, clsopt))
+               bind_op2_fixity modbuf op (fixity, clsopt))
             op_list in
           ()
     | D.Empty -> ()
             
-let pre_eval_topdevl env prog_pre =
+let fixity_eval_topdecl env modbuf =
   function
     | D.Type (_) -> ()
     | D.Data (_, typ, cons_ls, _) ->
@@ -913,14 +929,14 @@ let pre_eval_topdevl env prog_pre =
         let _ = L.map
           (fun cd ->
              match cd with
-               | D.GenDeclC g -> pre_eval_gendecl env prog_pre (Some clsid) g
+               | D.GenDeclC g -> fixity_eval_gendecl env modbuf (Some (ID.long_sym clsid)) g
                | _ -> ())
           cdecl_list in
           ()
     | D.Instance (_, _, _, idecl_list) ->
         ()
     | D.Default (_) -> ()
-    | D.Decl (D.GenDecl g) -> pre_eval_gendecl env prog_pre None g
+    | D.Decl (D.GenDecl g) -> fixity_eval_gendecl env modbuf None g
     | D.Decl (_) -> ()
         
 
@@ -942,7 +958,7 @@ let eval_export exbuf env =
       | M.EMod (modsym, _) ->
           H.add modex modsym true
 
-let eval_impdecl imp_map env =
+let fixity_eval_impdecl imp_map env =
   function
     | M.IDec (q, (modsym, _), Some (modas, _), impls) ->
         let mimp = (q, modsym, Some modas, impls) in
@@ -952,10 +968,10 @@ let eval_impdecl imp_map env =
         H.add imp_map modsym (q, modsym, None, impls)
     | M.IEmpty -> ()
 
-let eval_module exbuf modbuf =
+let fixity_eval_module exbuf modbuf =
   let env = module_env modbuf in
     match module_code modbuf with
-        { PD.syntax = ((modsym, _), export_list, (import_list, topdecl_list)); } ->
+        ((modsym, _), export_list, (import_list, topdecl_list)) ->
           let _ = L.map (eval_export exbuf env) export_list in
           let imp_map = module_import_module modbuf in
           let _ =
@@ -963,9 +979,8 @@ let eval_module exbuf modbuf =
               (* import Prelude *)
               H.add imp_map SYN.the_prelude_symbol (M.NotQual, SYN.the_prelude_symbol, None, None)
           in
-          let _ =
-            L.map (eval_impdecl imp_map env) import_list in
-          let _ = L.map (eval_topdecl env) topdecl_list in
+          let _ = L.map (fixity_eval_impdecl imp_map env) import_list in
+          let _ = L.map (fixity_eval_topdecl env modbuf) topdecl_list in
             exbuf
 
 let check_export exbuf modsym program =
@@ -974,26 +989,7 @@ let check_export exbuf modsym program =
 let check_export_module exbuf modsym program =
   (SaHt.mem program modsym) || (H.mem (export_export_module exbuf) modsym)
 
-let resolv_import_symbol env imp_mod_sym ex_mod_sym is_qual program =
-  function
-    | M.IVar ({ ID.qual = ID.Unq m; ID.short = ID.N sym }, _) ->
-        bind_import_value
-          env program is_qual imp_mod_sym sym
-          (global_value program ex_mod_sym sym)
-    | _ -> ()
-
-let resolv_import_module env imp_mod_sym ex_mod_sym is_qual program =
-  let top_tab = module_top_tab program ex_mod_sym in
-    H.iter
-      (fun sym value ->
-         (* let _ = F.printf "DEBUG: import: mod %s imp %s ex %s sym %s\n"
-           (S.name imp_mod_sym) (S.name ex_mod_sym) (S.name sym) in *)
-         bind_import_value
-           env program is_qual imp_mod_sym sym
-           value)
-      top_tab
-
-let resolv_import exbuf modbuf program =
+let resolve_import exbuf modbuf resolve_symbol resolve_module program =
   H.iter
     (fun name (qual, ex_mod_sym, as_sym_opt, impspec) ->
        let _ = (if not (check_export_module exbuf ex_mod_sym program) then
@@ -1009,37 +1005,138 @@ let resolv_import exbuf modbuf program =
             | Some m -> m
             | None -> ex_mod_sym)
        in
-       let env = module_env modbuf in
+       (* let env = module_env modbuf in *)
          match impspec with
            | Some (M.Imp  impls) ->
                let _ = L.map
                  (fun imp ->
-                    resolv_import_symbol env imp_mod_sym ex_mod_sym is_qual program imp)
+                    (* resolve_import_symbol env imp_mod_sym ex_mod_sym is_qual program imp *)
+                     resolve_symbol imp_mod_sym ex_mod_sym is_qual imp
+                 )
                  impls
                in ()
            | Some (M.Hide impls) -> ()
            | None ->
-               resolv_import_module env imp_mod_sym ex_mod_sym is_qual program
+               (* resolve_import_module env imp_mod_sym ex_mod_sym is_qual program *)
+               resolve_module imp_mod_sym ex_mod_sym is_qual
                  (* (\* module import *\) () *)
     )
     (module_import_module modbuf)
 
-(* eval_program : 
-   全ての module を thunk tree に変換した後で
-   toplevel環境 main シンボルに束縛されている thunk を展開 *)
-let eval_program program =
-  let exbuf = export_buffer () in
+
+let fixity_resolve_import_symbol ftab imp_mod_sym ex_mod_sym is_qual program =
+  function
+    | M.IVar ({ ID.qual = ID.Unq m; ID.short = ID.N sym }, _) ->
+        bind_import_fixity
+          ftab program is_qual imp_mod_sym sym
+          (global_fixity program ex_mod_sym sym)
+    | _ -> ()
+
+let fixity_resolve_import_module ftab imp_mod_sym ex_mod_sym is_qual program =
+  let ex_modbuf = program_module_buffer program ex_mod_sym in
+  let ex_ftab = module_fixity ex_modbuf in
+    H.iter
+      (fun sym value ->
+         (* let _ = F.printf "DEBUG: fixity_import: mod %s imp %s ex %s sym %s\n"
+           (S.name imp_mod_sym) (S.name ex_mod_sym) (S.name sym) in *)
+         bind_import_fixity
+           ftab program is_qual imp_mod_sym sym
+           value)
+      ex_ftab
+
+
+let eval_module modbuf =
+  let env = module_env modbuf in
+    match module_code modbuf with
+        ((modsym, _), export_list, (import_list, topdecl_list)) ->
+          let _ = L.map (eval_topdecl env) topdecl_list in
+            ()
+
+let resolve_import_symbol env imp_mod_sym ex_mod_sym is_qual program =
+  function
+    | M.IVar ({ ID.qual = ID.Unq m; ID.short = ID.N sym }, _) ->
+        bind_import_value
+          env program is_qual imp_mod_sym sym
+          (global_value program ex_mod_sym sym)
+    | _ -> ()
+
+let resolve_import_module env imp_mod_sym ex_mod_sym is_qual program =
+  let top_tab = module_top_tab program ex_mod_sym in
+    H.iter
+      (fun sym value ->
+         (* let _ = F.printf "DEBUG: import: mod %s imp %s ex %s sym %s\n"
+           (S.name imp_mod_sym) (S.name ex_mod_sym) (S.name sym) in *)
+         bind_import_value
+           env program is_qual imp_mod_sym sym
+           value)
+      top_tab
+
+let fixity_eval_program program =
   let exbuf =
     SaHt.fold
       (fun name modbuf exbuf ->
-         eval_module exbuf modbuf)
+         fixity_eval_module exbuf modbuf)
       program
-      exbuf
+      (export_buffer ())
+  in
+  let () =
+    SaHt.iter
+      (fun name modbuf ->
+         resolve_import
+           exbuf modbuf
+           (fun imp_mod_sym ex_mod_sym is_qual ->
+              fixity_resolve_import_symbol (module_fixity modbuf) imp_mod_sym ex_mod_sym is_qual program)
+           (fun imp_mod_sym ex_mod_sym is_qual ->
+              fixity_resolve_import_module (module_fixity modbuf) imp_mod_sym ex_mod_sym is_qual program)
+           program
+      )
+      program
+  in
+  let new_prog = SaHt.create
+    S.name
+    (fun _ -> "<mod>")
+    (Some (fun x -> "Already loaded module: " ^ x))
+    None (* (fun ks vs -> ks ^ " => " ^ vs) *)
+    "<program buffer>"
+  in
+  let program =
+    SaHt.fold
+      (fun name modbuf progbuf ->
+         let () =
+           SaHt.add progbuf
+             name
+             { modbuf with code = (SYA.maptree_module
+                                     (list2term_func modbuf)
+                                     (module_code modbuf)) }
+         in progbuf)
+      program
+      new_prog
+  in
+    (exbuf, program)
+
+(* eval_program : 
+   全ての module を thunk tree に変換した後で
+   toplevel環境 main シンボルに束縛されている thunk を展開 *)
+let eval_program (exbuf, program) =
+  let () =
+    SaHt.fold
+      (fun name modbuf () ->
+         eval_module modbuf)
+      program
+      ()
   in
   let _ =
     SaHt.iter
       (fun name modbuf ->
-         resolv_import exbuf modbuf program)
+         let env = module_env modbuf in
+           resolve_import
+             exbuf modbuf
+             (fun imp_mod_sym ex_mod_sym is_qual ->
+                resolve_import_symbol env imp_mod_sym ex_mod_sym is_qual program)
+             (fun imp_mod_sym ex_mod_sym is_qual ->
+                resolve_import_module env imp_mod_sym ex_mod_sym is_qual program)
+             program
+      )
       program
   in
     (eval_id_with_env
@@ -1050,7 +1147,7 @@ let eval_program program =
 
 (*  *)
 let eval_test fn =
-  let prog = load_program (LO.Old.parse_files_with_prelude [fn]) in
+  let prog = fixity_eval_program (load_program (LO.parse_files_with_prelude [fn])) in
     eval_program prog
 
 (*

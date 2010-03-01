@@ -6,10 +6,9 @@ module LST = LStream
 module T = Token
 module S = Stack
 module SYN = Syntax
-module PBuf = SYN.ParseBuffer
 module ID = SYN.Identifier
 module PD = SYN.ParsedData
-module SS = SYN.Scan
+(* module SS = SYN.Scan *)
 
 exception Error of string
 
@@ -138,10 +137,7 @@ let rec proceed_context (lstream_next, token_stack) =
   let (tok, _) as pair = lstream_next () in
   let _ = (S.push pair token_stack,
            debug_out (F.sprintf "token:%s" (L0.to_string_with_loc tok))) in
-    match tok with
-      | P.T_CONID ((n, _) as wl) when ID.local_class_p n  -> debug_out (F.sprintf "class:%s" n); P.T_CLSID wl
-      | P.T_MOD_CONID ((iwm, loc) as wl) when ID.class_p (ID.make_id_with_mod iwm) -> P.T_MOD_CLSID wl
-      | _ -> tok
+    tok
           
 let try_parse token_data lexbuf =
   let context = make_context token_data in
@@ -161,9 +157,78 @@ let dump_tok_stream s =
     ()
     s
 
+let parse0 token_data lexbuf =
 
+  let module_symbol =  
+    let context = make_context token_data in
+      try
+        P.module_prefix
+          (fun _ ->
+             match proceed_context context with
+               | P.SP_LEFT_BRACE (loc) | P.K_WHERE (loc) | P.SP_LEFT_PAREN (loc) -> P.EOF(loc)
+               | tok -> tok
+          )
+          lexbuf
+      with
+          Parsing.Parse_error ->
+            let (cur_t, err) = S.pop (snd context) in
+              raise (Error (F.sprintf "Layout prefix parsing failed. Error token:%s" (L0.to_string_with_loc cur_t)))
+  in
+
+  let rec parse0 token_data lexbuf tryc et_list err_list =
+    let _ = ID.begin_module_parse module_symbol in
+    let _ = List.iter (fun e -> (e := true)) err_list in (* Set all errored token flags *)
+      match (try_parse token_data lexbuf) with
+        | Err (et, err) ->
+            (if List.mem et et_list then
+               let _ = debug_out (F.sprintf "Layout retrying %d failed." tryc) in
+                 raise (Error (F.sprintf "Layout retrying %d failed. Error token:%s" tryc (L0.to_string_with_loc et)))
+             else
+               let _ = debug_out (F.sprintf "Layout retrying %d." (tryc + 1)) in
+                 parse0 token_data lexbuf (tryc + 1) (et :: et_list) (err :: err_list))
+        | Ret x -> x
+  in
+    parse0 token_data lexbuf 0 [] []
+
+let parse0_str str =
+  let lexbuf = (Lexing.from_string str) in
+    parse0 (all_token_rev_list lexbuf) lexbuf
+
+
+let parse0_chan input_chan =
+  let lexbuf = (Lexing.from_channel input_chan) in
+    parse0 (all_token_rev_list lexbuf) lexbuf
+
+let parse_file f =
+  parse0_chan (open_in_bin f)
+
+let prelude_path = "./Prelude.hs"
+
+let parse_prelude () =
+   parse_file prelude_path
+
+let rec parse_file_list loaded =
+  function
+    | [] -> loaded
+    | f :: rest ->
+        let syntax = parse_file f in
+          parse_file_list (syntax :: loaded) rest
+
+let parse_with_prelude input_chan =
+  let pre = parse_prelude () in
+    [ (parse0_chan input_chan); pre ]
+
+let parse_files_with_prelude files =
+  parse_file_list [parse_prelude ()] files
+
+let parse_test fn =
+  parse_with_prelude (open_in_bin fn)
+
+(*
 module Old =
 struct
+
+  module PBuf = SYN.ParseBuffer
 
   let parse0 token_data lexbuf =
 
@@ -262,3 +327,4 @@ struct
     parse_with_prelude (open_in_bin fn)
 
 end
+*)

@@ -338,10 +338,19 @@ struct
   let make_unqual_id n m =
     unqualid (S.intern n) (S.intern m)
 
+  let theModidStack : S.t Stack.t = Stack.create ()
+
+  let begin_module_parse modid =
+    Stack.push modid theModidStack;
+    theModidStack
+
+  let current_modid () =
+    Stack.top theModidStack
+
   let make_unqual_id_on_parse n =
     unqualid
       (S.intern n)
-      (PBuf.find_local_module ()).PBuf.symbol
+      (current_modid ()) (* (PBuf.find_local_module ()).PBuf.symbol *)
 
   let make_sp con =
     { short = Sp con;
@@ -421,11 +430,13 @@ struct
           end
       | (_, Q m)    -> class_p_with_mod (PBuf.find_module (S.name m)) id
 
+(*
   let fun_regist id def =
     SAH.replace (get_module_buffer id).PBuf.op_fun_assoc (name_str id) def
 
   let fun_find id =
     SAH.find (get_module_buffer id).PBuf.op_fun_assoc (name_str id)
+*)
 
   let op_prelude_def () =
     as_op_set_fixity sp_colon ((InfixRight, 5), None)
@@ -848,7 +859,7 @@ struct
 
   let op2lhs lhsd =
     let (op, _) as op_wl = op2lhs_op lhsd in
-    let _ = ID.fun_regist op true in
+    (* let _ = ID.fun_regist op true in *)
       Op2Fun (op_wl, (P.Pat1 (op2lhs_left lhsd), P.Pat1 (op2lhs_right lhsd)))
 
   type 'exp top =
@@ -862,7 +873,7 @@ struct
 
   let mk_class ctx ((name_id, _) as name_id_wl) ((typev_id, _) as typev_id_wl) def =
     (* let _ = F.fprintf stderr "mk_class: called with %s\n" (ID.name_str name_id) in *)
-    let _ = ID.class_regist name_id { cname = ID.name_str name_id; type_var = ID.name_str typev_id; ctxs = TClassCtx [] } in
+    (* let _ = ID.class_regist name_id { cname = ID.name_str name_id; type_var = ID.name_str typev_id; ctxs = TClassCtx [] } in *)
       Class (ctx, name_id_wl, typev_id_wl, def)
 
   let defpair_from_topdecl =
@@ -1048,7 +1059,7 @@ struct
 
 end
 
-
+(*
 module Scan =
 struct
   module L = List
@@ -1262,6 +1273,7 @@ struct
         (x, y, (z, topdecl_list)) -> (x, y, (z, List.map (op2_scan_topdecl pdata) topdecl_list))
     
 end
+*)
 
 module All =
 struct
@@ -1276,9 +1288,10 @@ struct
   module DS = DoStmt
   module E = Expression
 
-  type func = {
-    op2_pat_n : int -> func -> P.pat P.op2list_patf -> P.pat;
-    op2_exp_0 : func -> E.t E.op2list_expf -> E.t;
+  type 'module_buffer func = {
+    module_buffer : 'module_buffer;
+    op2_pat_n : int -> 'module_buffer func -> P.pat P.op2list_patf -> P.pat;
+    op2_exp_0 : 'module_buffer func -> E.t E.op2list_expf -> E.t;
   }
 
   (* P.maptree_op2pat 0 func (maptree_pat func) patf *)
@@ -1370,12 +1383,12 @@ struct
       | D.PatBind (pat, rhs) -> D.PatBind ((maptree_pat func pat), (maptree_rhs func rhs))
       | x -> x
 
-  and maptree_cdecl func tcls =
+  and maptree_cdecl func (* tcls *) =
     function
         D.FunDecC deflist -> D.FunDecC (L.map (fun (lhs, rhs) -> (maptree_funlhs func lhs), (maptree_rhs func rhs)) deflist)
       | x -> x
 
-  and maptree_idecl func tcls =
+  and maptree_idecl func (* tcls *) =
     function
         D.FunDecI deflist -> D.FunDecI (L.map (fun (lhs, rhs) -> (maptree_funlhs func lhs), (maptree_rhs func rhs)) deflist)
       | x -> x
@@ -1384,10 +1397,10 @@ struct
     function 
         D.Decl d -> D.Decl (maptree_decl func d)
       | D.Class (ctx, ((cls, _) as cls_wl), x, cdecl_list) ->
-          let new_cdecl_list = List.map (fun cdecl -> maptree_cdecl func (ID.class_find cls) cdecl) cdecl_list in
+          let new_cdecl_list = List.map (fun cdecl -> maptree_cdecl func (* (ID.class_find cls) *) cdecl) cdecl_list in
             D.Class (ctx, cls_wl, x, new_cdecl_list)
       | D.Instance (ctx, ((cls, _) as cls_wl), x, idecl_list) ->
-          let new_idecl_list = List.map (fun idecl -> maptree_idecl func (ID.class_find cls) idecl) idecl_list in
+          let new_idecl_list = List.map (fun idecl -> maptree_idecl func (* (ID.class_find cls) *) idecl) idecl_list in
             D.Instance (ctx, cls_wl, x, new_idecl_list)
       | x -> x
 

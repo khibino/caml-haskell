@@ -65,16 +65,16 @@ nat_libs = extLib.cmxa $(scratch_nat_lib)
 
 all: all_byte all_nat
 
-all_byte: scratch.cma lex0_main.byte loin_main.byte layout_main.byte parse_main.byte fixity_main.byte eval_main.byte
+all_byte: scratch.cma lex0_main.byte loin_main.byte layout_main.byte parse_main.byte eval_main.byte
 
-all_nat: scratch.cmxa lex0_main.nat loin_main.nat layout_main.nat parse_main.nat fixity_main.nat eval_main.nat
+all_nat: scratch.cmxa lex0_main.nat loin_main.nat layout_main.nat parse_main.nat eval_main.nat
 
 #all: scratch.cma 
 
 info:
 	echo "byte_libs = $(byte_libs)"
 
-test: all Prelude.lex0 Prelude.loin Prelude.layout Prelude.parse
+test: all Prelude.lex0 Prelude.loin Prelude.layout
 	for hs in p hello0 hello1 hello2 fixity fixity2 where0 where1 pat pat1 flip tak0 tak1; do \
 		printf "%-10s: " $${hs} ; ./eval_main.nat ../sample/$${hs}.hs; \
 	done

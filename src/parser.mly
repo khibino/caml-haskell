@@ -565,7 +565,7 @@ tyvar_comma_list:
 */
 
 funlhs:
-  var apat_list  { I.fun_regist (I.unloc $1) true; D.FunLV($1, $2) }
+  var apat_list  { (* I.fun_regist (I.unloc $1) true; *) D.FunLV($1, $2) }
 | op2_pat_pair  { D.op2lhs $1 }
 | SP_LEFT_PAREN funlhs SP_RIGHT_PAREN apat_list  { D.NestDec ($2, $4) }
 ;
