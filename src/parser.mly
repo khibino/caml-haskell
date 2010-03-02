@@ -2,11 +2,12 @@
   module F = Printf
   module OH = OrderedHash
 
+  module S = Symbol
   module TK = Token
   module SYN = Syntax
 
 
-  module I = SYN.Identifier
+  module ID = SYN.Identifier
 
   module D = SYN.Decl
   module M = SYN.Module
@@ -57,8 +58,8 @@
 
 %token  <(Token.id_with_mod * Token.loc)>  T_MOD_CONSYM
 %token  <(Token.id_with_mod * Token.loc)>  T_MOD_CONID T_MOD_CLSID
-%token  <(string * Token.loc)>  T_CONSYM
-%token  <(string * Token.loc)>  T_CONID T_CLSID
+%token  <(Symbol.t * Token.loc)>  T_CONSYM
+%token  <(Symbol.t * Token.loc)>  T_CONID T_CLSID
 
 %token  <(Token.id_with_mod * Token.loc)>  T_MOD_VARSYM
 %token  <(Token.id_with_mod * Token.loc)>  T_MOD_VARID
@@ -79,7 +80,7 @@
 
 %start  e_module
 %type <((Symbol.t * Token.loc) * Syntax.Module.export list * (Syntax.Module.impdecl list * Syntax.Expression.t Syntax.Decl.top list))> e_module
-/*  type e_module_type = (T.loc I.id * M.export list * (M.impdecl list * E.t D.top list)) */
+/*  type e_module_type = (T.loc ID.id * M.export list * (M.impdecl list * E.t D.top list)) */
 
 %start  module_prefix
 /*(*  %type <(Symbol.t * Token.loc) * Syntax.Module.export list> module_prefix  *)*/
@@ -98,8 +99,8 @@ e_module:
 module_top:
   K_MODULE modid export_list K_WHERE body { ($2, $3, $5) }
 | K_MODULE modid K_WHERE body         { ($2, [], $4) }
-| body { (I.idwul SYN.the_main_symbol,
-          [M.EVar (I.idwul (I.qualid SYN.the_main_symbol SYN.the_entry_main_symbol))],
+| body { (ID.idwul SYN.the_main_symbol,
+          [M.EVar (ID.idwul (ID.qualid SYN.the_main_symbol SYN.the_entry_main_symbol))],
           $1) }
 ;
 
@@ -107,8 +108,8 @@ module_top:
 module_prefix:
   K_MODULE modid export_list K_WHERE { ($2, $3) }
 | K_MODULE modid K_WHERE             { ($2, []) }
-| { (I.idwul SYN.the_main_symbol,
-     [M.EVar (I.idwul (I.qualid SYN.the_main_symbol SYN.the_entry_main_symbol))]) }
+| { (ID.idwul SYN.the_main_symbol,
+     [M.EVar (ID.idwul (ID.qualid SYN.the_main_symbol SYN.the_entry_main_symbol))]) }
 ;
 */
 
@@ -564,7 +565,7 @@ tyvar_comma_list:
 */
 
 funlhs:
-  var apat_list  { (* I.fun_regist (I.unloc $1) true; *) D.FunLV($1, $2) }
+  var apat_list  { (* ID.fun_regist (ID.unloc $1) true; *) D.FunLV($1, $2) }
 | op2_pat_pair  { D.op2lhs $1 }
 | SP_LEFT_PAREN funlhs SP_RIGHT_PAREN apat_list  { D.NestDec ($2, $4) }
 ;
@@ -904,9 +905,9 @@ fpat:
 ;
 
 gcon:
-  SP_LEFT_PAREN SP_RIGHT_PAREN  { I.idwl I.sp_unit $1 }
-| SP_LEFT_BRACKET SP_RIGHT_BRACKET  { I.idwl I.sp_null_list $1 }
-| SP_LEFT_PAREN comma_list SP_RIGHT_PAREN  { I.idwl (I.sp_tuple $2) $1 }
+  SP_LEFT_PAREN SP_RIGHT_PAREN  { ID.idwl ID.sp_unit $1 }
+| SP_LEFT_BRACKET SP_RIGHT_BRACKET  { ID.idwl ID.sp_null_list $1 }
+| SP_LEFT_PAREN comma_list SP_RIGHT_PAREN  { ID.idwl (ID.sp_tuple $2) $1 }
 | qcon  { $1 }
 ;
 
@@ -928,11 +929,11 @@ tyvar:
 ;
 
 tycon:
-  conid  { let (f, s) = $1 in I.make_unqual_idwl_on_parse f s }         /*(type constructors)*/
+  conid  { ID.unqual_idwl_on_parse $1 }         /*(type constructors)*/
 ;
 
 modid:
-  conid  { let (f, s) = $1 in ((Symbol.intern f), s) }          /*(modules)*/
+  conid  { $1 }          /*(modules)*/
 ;
 
 var:
@@ -946,7 +947,7 @@ qvar:
 ;       /*(qualified variable)*/
 
 con:
-  conid  { let (f, s) = $1 in I.make_unqual_idwl_on_parse f s }
+  conid  { ID.unqual_idwl_on_parse $1 }
 | SP_LEFT_PAREN consym SP_RIGHT_PAREN  { $2 }
 ;       /*(constructor)*/
 
@@ -967,7 +968,7 @@ qvarop:
 
 conop:
   consym  { $1 }
-| SP_B_QUOTE conid SP_B_QUOTE  { let (f, s) = $2 in I.make_unqual_idwl_on_parse f s }
+| SP_B_QUOTE conid SP_B_QUOTE  { ID.unqual_idwl_on_parse $2 }
 ;       /*(constructor operator)*/
 
 qconop:
@@ -987,85 +988,85 @@ qop:
 
 
 gconsym:
-  KS_COLON  { I.idwl I.sp_colon $1 }
+  KS_COLON  { ID.idwl ID.sp_colon $1 }
 | qconsym   { $1 }
 ;
 
 qvarid:
-  T_MOD_VARID   { I.make_idwl_with_mod $1 }
+  T_MOD_VARID   { ID.make_idwl_with_mod $1 }
 | varid         { $1 }
 ;
 
 qconid:
-  T_MOD_CONID   { I.make_idwl_with_mod $1 }
-| conid         { let (f, s) = $1 in I.make_unqual_idwl_on_parse f s }
+  T_MOD_CONID   { ID.make_idwl_with_mod $1 }
+| conid         { ID.unqual_idwl_on_parse $1 }
 ;
 
 qvarsym:
-  T_MOD_VARSYM  { I.make_idwl_with_mod $1 }
+  T_MOD_VARSYM  { ID.make_idwl_with_mod $1 }
 | varsym        { $1 }
 ;
 
 qconsym:
-  T_MOD_CONSYM  { I.make_idwl_with_mod $1 }
+  T_MOD_CONSYM  { ID.make_idwl_with_mod $1 }
 | consym        { $1 }
 ;
 
 varid:
-  T_VARID  { I.make_unqual_idwl_on_parse (fst $1) (snd $1) }
+  T_VARID  { ID.make_unqual_idwl_on_parse (fst $1) (snd $1) }
 | k_as         { $1 }
 | k_qualified  { $1 }
 | k_hiding     { $1 }
 ;
 
 k_as:
-  K_AS   { I.make_unqual_idwl_on_parse "as" $1 }
+  K_AS   { ID.make_unqual_idwl_on_parse "as" $1 }
 ;
 
 k_qualified:
-  K_QUALIFIED   { I.make_unqual_idwl_on_parse "qulified" $1 }
+  K_QUALIFIED   { ID.make_unqual_idwl_on_parse "qulified" $1 }
 ;
 
 k_hiding:
-  K_HIDING   { I.make_unqual_idwl_on_parse "hiding" $1 }
+  K_HIDING   { ID.make_unqual_idwl_on_parse "hiding" $1 }
 ;
 
 qtycls:
   /* qconid  { $1 } */  /*(qualified type classes)*/
-  T_MOD_CLSID   { I.make_idwl_with_mod $1 }
+  T_MOD_CLSID   { ID.make_idwl_with_mod $1 }
 | tycls         { $1 }
 ;
 
 tycls:
-  conid  { let (f, s) = $1 in I.make_unqual_idwl_on_parse f s }         /*(type classes)*/
-| T_CLSID  { I.make_unqual_idwl_on_parse (fst $1) (snd $1) }
+  conid  { ID.unqual_idwl_on_parse $1 }         /*(type classes)*/
+| T_CLSID  { ID.unqual_idwl_on_parse $1 }
 ;
 
 conid:
-  T_CONID  { $1 } /*(*{ let (f, s) = $1 in I.make_unqual_idwl_on_parse f s }*)*/
+  T_CONID  { $1 }
 ;
 
 varsym:
-  T_VARSYM  { I.make_unqual_idwl_on_parse (fst $1) (snd $1) }
+  T_VARSYM  { ID.make_unqual_idwl_on_parse (fst $1) (snd $1) }
 | ks_plus    { $1 }
 | ks_minus   { $1 }
 | ks_exclam  { $1 }
 ;
 
 ks_plus:
-  KS_PLUS   { I.make_unqual_idwl_on_parse "+" $1 }
+  KS_PLUS   { ID.make_unqual_idwl_on_parse "+" $1 }
 ;
 
 ks_minus:
-  KS_MINUS  { I.make_unqual_idwl_on_parse "-" $1 }
+  KS_MINUS  { ID.make_unqual_idwl_on_parse "-" $1 }
 ;
 
 ks_exclam:
-  KS_EXCLAM  { I.make_unqual_idwl_on_parse "!" $1 }
+  KS_EXCLAM  { ID.make_unqual_idwl_on_parse "!" $1 }
 ;
 
 consym:
-  T_CONSYM  { I.make_unqual_idwl_on_parse (fst $1) (snd $1) }
+  T_CONSYM  { ID.unqual_idwl_on_parse $1 }
 ;
 
 literal:

@@ -172,6 +172,9 @@ struct
   let current_modid () =
     Stack.top theModidStack
 
+  let unqualid_on_parse nsym =
+    unqualid nsym (current_modid ())
+
   let make_unqual_id_on_parse n =
     unqualid
       (S.intern n)
@@ -190,6 +193,9 @@ struct
   let idwl id loc = (id, loc)
 
   let make_unqual_idwl n m loc = idwl (make_unqual_id n m) loc
+
+  let unqual_idwl_on_parse (nsym, loc) =
+    idwl (unqualid_on_parse nsym) loc
 
   let make_unqual_idwl_on_parse n loc =
     idwl (make_unqual_id_on_parse n) loc

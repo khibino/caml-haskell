@@ -1,7 +1,9 @@
 {
   module LX = Lexing
-  module P = Parser
+
+  module S = Symbol
   module T = Token
+  module P = Parser
   module F = Printf
 
   let dump_position pos =
@@ -262,7 +264,7 @@ rule token = parse
   | "qualified"       { P.K_QUALIFIED(loc lexbuf) }  (** maybe varid *)
   | "hiding"          { P.K_HIDING(loc lexbuf) }  (** maybe varid *)
   | varid      { P.T_VARID(LX.lexeme lexbuf, loc lexbuf) }
-  | conid      { P.T_CONID(LX.lexeme lexbuf, loc lexbuf) }
+  | conid      { P.T_CONID(S.intern (LX.lexeme lexbuf), loc lexbuf) }
       (** identifiers or may be qualified ones *)
 
   | whitespace  { fix_position lexbuf; P.WS_WHITE(loc lexbuf) }  (** comment begining with dashes is not varsym *)
@@ -274,7 +276,7 @@ rule token = parse
   | minus      { P.KS_MINUS(loc lexbuf) } (** maybe varsym *)
   | exclamation  { P.KS_EXCLAM(loc lexbuf) } (** maybe varsym *)
   | varsym     { P.T_VARSYM(LX.lexeme lexbuf, loc lexbuf) }
-  | consym     { P.T_CONSYM(LX.lexeme lexbuf, loc lexbuf) }
+  | consym     { P.T_CONSYM(S.intern (LX.lexeme lexbuf), loc lexbuf) }
       (** symbols or may be qualified ones *)
 
   | modid '.' varid   { P.T_MOD_VARID(decode_with_mod lexbuf, loc lexbuf) }
@@ -346,10 +348,10 @@ rule token = parse
       | P.KS_MINUS(loc) -> "-", loc
       | P.KS_EXCLAM(loc) -> "!", loc
       | P.T_VARID(n, loc) -> n, loc
-      | P.T_CONID(n, loc) -> n, loc
-      | P.T_CLSID(n, loc) -> "<class>:" ^ n, loc
+      | P.T_CONID(n, loc) -> (S.name n), loc
+      | P.T_CLSID(n, loc) -> "<class>:" ^ (S.name n), loc
       | P.T_VARSYM(n, loc) -> n, loc
-      | P.T_CONSYM(n, loc) -> n, loc
+      | P.T_CONSYM(n, loc) -> (S.name n), loc
       | P.T_MOD_VARID(wm, loc) -> wm.T.modid ^ "." ^ wm.T.id, loc
       | P.T_MOD_CONID(wm, loc) -> wm.T.modid ^ "." ^ wm.T.id, loc
       | P.T_MOD_CLSID(wm, loc) -> "<class>:" ^ wm.T.modid ^ "." ^ wm.T.id, loc
