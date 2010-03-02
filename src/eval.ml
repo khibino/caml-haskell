@@ -1108,20 +1108,17 @@ let fixity_eval_program program =
     None (* (fun ks vs -> ks ^ " => " ^ vs) *)
     "<program buffer>"
   in
-  let program =
-    SaHt.fold
-      (fun name modbuf progbuf ->
-         let () =
-           SaHt.add progbuf
-             name
-             { modbuf with code = (SYA.maptree_module
-                                     (list2term_func modbuf)
-                                     (module_code modbuf)) }
-         in progbuf)
+  let () =
+    SaHt.iter
+      (fun name modbuf ->
+         SaHt.add new_prog
+           name
+           { modbuf with code = (SYA.maptree_module
+                                   (list2term_func modbuf)
+                                   (module_code modbuf)) })
       program
-      new_prog
   in
-    (exbuf, program)
+    (exbuf, new_prog)
 
 (* eval_program : 
    全ての module を thunk tree に変換した後で
