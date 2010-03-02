@@ -263,7 +263,7 @@ rule token = parse
   | "as"              { P.K_AS(loc lexbuf) }  (** maybe varid *)
   | "qualified"       { P.K_QUALIFIED(loc lexbuf) }  (** maybe varid *)
   | "hiding"          { P.K_HIDING(loc lexbuf) }  (** maybe varid *)
-  | varid      { P.T_VARID(LX.lexeme lexbuf, loc lexbuf) }
+  | varid      { P.T_VARID(S.intern (LX.lexeme lexbuf), loc lexbuf) }
   | conid      { P.T_CONID(S.intern (LX.lexeme lexbuf), loc lexbuf) }
       (** identifiers or may be qualified ones *)
 
@@ -275,7 +275,7 @@ rule token = parse
   | plus       { P.KS_PLUS(loc lexbuf) }  (** maybe varsym *)
   | minus      { P.KS_MINUS(loc lexbuf) } (** maybe varsym *)
   | exclamation  { P.KS_EXCLAM(loc lexbuf) } (** maybe varsym *)
-  | varsym     { P.T_VARSYM(LX.lexeme lexbuf, loc lexbuf) }
+  | varsym     { P.T_VARSYM(S.intern (LX.lexeme lexbuf), loc lexbuf) }
   | consym     { P.T_CONSYM(S.intern (LX.lexeme lexbuf), loc lexbuf) }
       (** symbols or may be qualified ones *)
 
@@ -347,10 +347,10 @@ rule token = parse
       | P.KS_PLUS(loc) -> "+", loc
       | P.KS_MINUS(loc) -> "-", loc
       | P.KS_EXCLAM(loc) -> "!", loc
-      | P.T_VARID(n, loc) -> n, loc
+      | P.T_VARID(n, loc) -> (S.name n), loc
       | P.T_CONID(n, loc) -> (S.name n), loc
       | P.T_CLSID(n, loc) -> "<class>:" ^ (S.name n), loc
-      | P.T_VARSYM(n, loc) -> n, loc
+      | P.T_VARSYM(n, loc) -> (S.name n), loc
       | P.T_CONSYM(n, loc) -> (S.name n), loc
       | P.T_MOD_VARID(wm, loc) -> wm.T.modid ^ "." ^ wm.T.id, loc
       | P.T_MOD_CONID(wm, loc) -> wm.T.modid ^ "." ^ wm.T.id, loc

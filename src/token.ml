@@ -1,4 +1,6 @@
 
+module S = Symbol
+
 type point = {
   col  : int;
   line : int;
@@ -27,3 +29,8 @@ let implicit_loc =
   { start_p = { col = -1; line = -1 };
     end_p =  { col = -1; line = -1 };
   }
+
+let plus_sym = S.intern "+"
+let minus_sym = S.intern "-"
+let exclam_sym = S.intern "!"
+

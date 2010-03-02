@@ -63,8 +63,8 @@
 
 %token  <(Token.id_with_mod * Token.loc)>  T_MOD_VARSYM
 %token  <(Token.id_with_mod * Token.loc)>  T_MOD_VARID
-%token  <(string * Token.loc)>  T_VARSYM
-%token  <(string * Token.loc)>  T_VARID
+%token  <(Symbol.t * Token.loc)>  T_VARSYM
+%token  <(Symbol.t * Token.loc)>  T_VARID
 
 %token  <(char * Token.loc)>  L_CHAR
 %token  <(string * Token.loc)>  L_STRING
@@ -1013,7 +1013,7 @@ qconsym:
 ;
 
 varid:
-  T_VARID  { ID.make_unqual_idwl_on_parse (fst $1) (snd $1) }
+  T_VARID  { ID.unqual_idwl_on_parse $1 }
 | k_as         { $1 }
 | k_qualified  { $1 }
 | k_hiding     { $1 }
@@ -1047,22 +1047,22 @@ conid:
 ;
 
 varsym:
-  T_VARSYM  { ID.make_unqual_idwl_on_parse (fst $1) (snd $1) }
+  T_VARSYM  { ID.unqual_idwl_on_parse $1 }
 | ks_plus    { $1 }
 | ks_minus   { $1 }
 | ks_exclam  { $1 }
 ;
 
 ks_plus:
-  KS_PLUS   { ID.make_unqual_idwl_on_parse "+" $1 }
+  KS_PLUS   { ID.unqual_idwl_on_parse (TK.plus_sym, $1) }
 ;
 
 ks_minus:
-  KS_MINUS  { ID.make_unqual_idwl_on_parse "-" $1 }
+  KS_MINUS  { ID.unqual_idwl_on_parse (TK.minus_sym, $1) }
 ;
 
 ks_exclam:
-  KS_EXCLAM  { ID.make_unqual_idwl_on_parse "!" $1 }
+  KS_EXCLAM  { ID.unqual_idwl_on_parse (TK.exclam_sym, $1) }
 ;
 
 consym:
