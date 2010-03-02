@@ -5,7 +5,6 @@
   module TK = Token
   module SYN = Syntax
 
-  module PBuf = SYN.ParseBuffer
 
   module I = SYN.Identifier
 
@@ -115,16 +114,16 @@ module_prefix:
 
 /*
 module_prefix:
-  K_MODULE modid export_list K_WHERE { PBuf.create (fst $2) }
-| K_MODULE modid K_WHERE             { PBuf.create (fst $2) }
-| { PBuf.create SYN.the_main_symbol }
+  K_MODULE modid export_list K_WHERE { (fst $2) }
+| K_MODULE modid K_WHERE             { (fst $2) }
+| { SYN.the_main_symbol }
 ;
 */
 
 /*
 module_prefix:
-  K_MODULE modid  { PBuf.create (fst $2) }
-| { PBuf.create SYN.the_main_symbol }
+  K_MODULE modid  { (fst $2) }
+| { SYN.the_main_symbol }
 ;
 */
 

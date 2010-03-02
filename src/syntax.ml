@@ -72,195 +72,10 @@ let must_be_int li err =
       (Int (i64), _) -> Int64.to_int i64
     | _ -> failwith err
 
-module ParseBuffer =
-struct
-  module H = Hashtbl
-  module SAH = SaHashtbl
-
-  let debugFlag = ref false  (* Syntax.ParseBuffer.debugFlag := true *)
-  let debug_out s =
-    if !debugFlag then
-      let _ = output_string stderr ("DEBUG: " ^ s ^ "\n") in
-        flush stderr
-
-  type module_buffer = {
-    symbol : Symbol.t;
-
-    op_fixity_assoc : (Symbol.t, (fixity * tclass option)) SaHt.t;
-    op_typesig_assoc : (string, tclass) SAH.t;
-
-    op_fun_assoc : (string, bool) SAH.t;
-    tclass_assoc : (string, tclass) SAH.t;
-
-    dump_buf : (unit -> string)
-  }
-
-  let module_name mb = S.name mb.symbol
-
-  let create_module name = 
-    let (fixity_a, typesig_a, fun_a, tclass_a) =
-      (SaHt.create
-          S.name
-          (fun (fix, tcls) -> fixity_str fix)
-          (Some ((^) "Duplicated fixity declarations for "))
-          None
-          ((S.name name) ^ ":" ^ "fixity_assoc"),
-       SAH.create
-         ((^) "Duplicated declarations of ")
-         (fun n tcls -> ((tclass_str tcls) ^ n)),
-       SAH.create
-         ((^) "Duplicated function declarations of ")
-         (fun n _ -> "func(" ^ n ^ ")"),
-       SAH.create
-         ((^) "Duplicated type class declarations of ")
-         (fun n tcls -> ((tclass_str tcls) ^ n)))
-    in
-    let rec this = {
-        symbol = name;
-        
-        op_fixity_assoc = fixity_a;
-        op_typesig_assoc = typesig_a;
-        op_fun_assoc = fun_a;
-        tclass_assoc = tclass_a;
-
-        dump_buf = (fun () -> (S.name this.symbol) ^ "\n"
-                      ^ (SaHt.to_string fixity_a)  ^ "\n"
-                      ^ (SAH.to_string typesig_a) ^ "\n"
-                      ^ (SAH.to_string tclass_a)  ^ "\n")
-      }
-    in this
-
-  let op_fixity pb_mod op =
-    if SaHt.mem pb_mod.op_fixity_assoc op then
-      SaHt.find pb_mod.op_fixity_assoc op
-    else (default_op_fixity, None)
-
-  let op_typesig pb_mod op =
-    if SAH.mem pb_mod.op_typesig_assoc op then
-      Some (SAH.find pb_mod.op_typesig_assoc op)
-    else None
-
-
-  type t = {
-    module_assoc : (string, module_buffer) SAH.t;
-
-    get_module : (string -> module_buffer);
-    get_local_module : (unit -> module_buffer);
-  }
-
-  let theBufferStack = Stack.create ()
-
-
-  let create local_module_symbol =
-    let (massoc, lm) = (SAH.create
-                          (fun x -> "ParseBuffer BUG!: same name module added: " ^ x)
-                          (fun k m -> m.dump_buf ()),
-                        create_module local_module_symbol) in
-    let newb = {
-      module_assoc  = massoc;
-
-      get_module = (fun modid ->
-                      if SAH.mem massoc modid then SAH.find massoc modid
-                      else
-                        let m = create_module (S.intern modid) in
-                        let _ = SAH.add massoc modid m in m);
-      get_local_module = (fun () -> lm);
-    } in
-      Stack.push newb theBufferStack;
-      newb
-
-  let internal_peek_last_buffer (exist, empty) =
-    if Stack.is_empty theBufferStack then empty ()
-    else exist (Stack.top theBufferStack)
-
-  let peek_last_buffer () =
-    internal_peek_last_buffer
-      ((fun x -> Some x), (fun () -> None))
-
-  let get_last_buffer () =
-    internal_peek_last_buffer
-      ((fun x -> x),
-       (fun () -> failwith "Parse buffer not initialized!"))
-
-  let find_module modid = (get_last_buffer ()).get_module modid
-  let find_local_module () = (get_last_buffer ()).get_local_module ()
-
-  let get_buffer_of_qual nr =
-    let lm = find_local_module () in
-      if nr == lm.symbol then lm
-      else find_module (S.name nr)
-
-  let make_op_def pb_mod opn op_cons op_str_fun =
-    let (fixity, fix_tclass) = op_fixity pb_mod (S.intern opn) in
-    let sig_tclass = op_typesig pb_mod opn in
-
-    let tclass =
-      match (fix_tclass, sig_tclass) with
-          (None, None) -> None
-        | (Some _, Some _) -> failwith ("Duplicated declarations for " ^ (S.name pb_mod.symbol) ^ "." ^ opn)
-        | (x, None) | (None, x) -> x
-    in
-    let v = op_cons opn fixity tclass in
-      debug_out (F.sprintf "op '%s' defined." (op_str_fun v));
-      v
-
-  (* ParsedData への変換 - 解釈中のモジュールが参照しているモジュール *)
-  let conv_to_data nmod data_cons op_def_str =
-    data_cons
-      nmod.symbol
-      (SAH.create
-         (fun _ -> "BUG: convert_module")
-         (fun k v -> k ^ " => " ^ (op_def_str v)))
-      nmod.tclass_assoc
-
-  (* ParsedData への変換 - 対解釈中モジュール *)
-  let conv_to_data_local buffer local_module_name (op_cons, op_def_str) data_cons =
-    let (local_mod, named_as_local) =
-      ((buffer.get_local_module ()),
-       (buffer.get_module local_module_name))
-    in
-
-    let result_op_assoc = SAH.create
-      (fun _ -> "BUG: convert_local_module")
-      (fun _ op_def -> op_def_str op_def)
-    in
-
-    let conv_op mod_to_conv =
-      let conv_op_assoc assoc =
-        SaHt.iter
-          (fun op _ ->
-             SAH.replace result_op_assoc
-               (S.name op)
-               (make_op_def local_mod (S.name op) op_cons op_def_str))
-          assoc
-      in
-      let conv_op_old_assoc assoc =
-        SAH.iter
-          (fun op _ ->
-             SAH.replace result_op_assoc
-               op
-               (make_op_def local_mod op op_cons op_def_str))
-          assoc
-      in
-        (conv_op_assoc mod_to_conv.op_fixity_assoc,
-         conv_op_old_assoc mod_to_conv.op_typesig_assoc,
-         conv_op_old_assoc mod_to_conv.op_fun_assoc)
-    in
-
-    let _ = (conv_op local_mod,
-             conv_op named_as_local) in
-
-      data_cons
-        (S.intern local_module_name)
-        result_op_assoc
-        named_as_local.tclass_assoc
-
-end
 
 module Identifier =
 struct
 
-  module PBuf = ParseBuffer
   module SAH = SaHashtbl
   module S = Symbol
 
@@ -316,6 +131,18 @@ struct
       | Q (_) -> long_sym id
       | _ -> short_sym id
 
+  let parse_sym sym =
+    let name = (S.name sym) in
+    let matched =
+      Str.string_match
+        (Str.regexp "^\\([^.]+\\)\\.\\(.+\\)$")
+        name
+        0
+    in
+      if matched then (Some (S.intern (Str.matched_group 1 name)),
+                       S.intern (Str.matched_group 2 name))
+      else (None, sym)
+
   type idwl = (id * T.loc)
   type symwl = (Symbol.t * T.loc)
 
@@ -327,8 +154,6 @@ struct
 
   let make_qual_id n q =
     qualid (S.intern q) (S.intern n)
-
-      (* Q ({ name = n; qual = q; }) *)
 
   let unqualid n m = 
     { short = N   n;
@@ -350,7 +175,7 @@ struct
   let make_unqual_id_on_parse n =
     unqualid
       (S.intern n)
-      (current_modid ()) (* (PBuf.find_local_module ()).PBuf.symbol *)
+      (current_modid ())
 
   let make_sp con =
     { short = Sp con;
@@ -387,141 +212,11 @@ struct
 
   let make_idwl_with_mod (iwm, loc) = idwl (make_id_with_mod iwm) loc
 
-  let get_module_buffer id =
-    match id.short, id.qual with
-      | (Sp _, _)   -> PBuf.find_module (the_prelude_name)
-      | (_, Unq m)  -> PBuf.find_local_module () (* FIXME unqualified symbol may be defined by Prelude *)
-      | (_, Q m)    -> PBuf.find_module (S.name m)
-
-(*
-  let op_prelude_def () =
-    as_op_set_fixity sp_colon ((InfixRight, 5), None)
-*)
-
 end
-
-(* ParseBuffer.module_buffer --> ParsedData.module_data *)
-module ParsedData =
-struct
-  module H = Hashtbl
-  module SAH = SaHashtbl
-  module PBuf = ParseBuffer
-  module ID = Identifier
-
-  let debugFlag = ref false  (* Syntax.ParsedData.debugFlag := true *)
-  let debug_out s =
-    if !debugFlag then
-      let _ = output_string stderr ("DEBUG: " ^ s ^ "\n") in
-        flush stderr
-
-
-  type op_def = {
-    fname : string;
-    fixity : fixity;
-    tclass : tclass option
-  }
-
-  let op_def_string def =
-    let fix_part d = d.fname ^ (fixity_str d.fixity) in
-      (tclass_context_str def.tclass) ^ (fix_part def)
-
-  type module_data = {
-    mutable symbol : Symbol.t;
-    op_assoc : (string, op_def) SAH.t;
-    tclass_assoc : (string, tclass) SAH.t;
-  }
-
-  let make_data name opa tca =
-    { symbol = name; op_assoc = opa; tclass_assoc = tca; }
-
-(*
-  let qual_fun pd =
-    if pd.symbol == PBuf.parsing_module_symbol then ID.make_unqual_id
-    else (fun n -> ID.make_qual_id n (S.name pd.symbol))
-*)
-
-  type 'syntax_tree t = {
-    module_assoc : (string, module_data) SAH.t;
-    local_module : module_data;
-
-    syntax : 'syntax_tree;
-  }
-
-  let module_to_string m =
-    "module_data: " ^ (S.name m.symbol) ^ "\n" ^ (SAH.to_string m.op_assoc)
-
-  let get_module_data pd id =
-    (* match id with *)
-    match id.ID.short, id.ID.qual with
-      (* | ID.Sp (_) -> SAH.find pd.module_assoc (the_prelude_name) *)
-      | (ID.Sp _, _)   -> SAH.find pd.module_assoc (the_prelude_name)
-      (* | ID.Unq n  -> pd.local_module *)
-      | (_, ID.Unq m)  -> pd.local_module (* FIXME unqualified symbol may be defined by Prelude *)
-      (* | ID.Q qid -> *)
-      | (_, ID.Q m)    -> 
-          let lm = pd.local_module in
-            if m == lm.symbol then lm
-            else SAH.find pd.module_assoc (S.name m)
-(*       failwith ("module " ^ modid ^" not found.") *)
-
-  let local_module_sym pd = pd.local_module.symbol
-
-  let id_op_def (pd, pre_pd) id =
-    let (m, op) = (get_module_data pd id, ID.name_str id) in
-      if SAH.mem m.op_assoc op then
-        SAH.find m.op_assoc op
-      else
-        let pm = SAH.find pre_pd.module_assoc (the_prelude_name) in
-          if SAH.mem pm.op_assoc op then
-            SAH.find pm.op_assoc op
-          else
-            failwith ("operator " ^ op ^ " not found in module " ^ (S.name m.symbol))
-
-  let create_parsed_data pbuf (((local_module_symbol, _), _, _) as syntax_t) =
-    let new_mod_assoc = SAH.create
-      (fun _ -> "BUG: create_parsed_data")
-      (fun k m -> module_to_string m)
-    in
-    let _ = SAH.iter
-      (fun modid pb_mod ->
-         if pb_mod.PBuf.symbol != local_module_symbol then
-           let _ = debug_out ("Converting module '" ^ modid ^ "' ...") in
-           (* let mod_data = convert_module pb_mod in *)
-           let mod_data = PBuf.conv_to_data pb_mod make_data op_def_string in
-           let _ = debug_out ("Convert module done.") in
-             SAH.add new_mod_assoc (S.name mod_data.symbol) mod_data
-         else
-           debug_out ("Skipping module '" ^ modid ^ "' which is local"))
-      pbuf.PBuf.module_assoc
-    in
-
-    let local_module_name = S.name local_module_symbol in
-    let _ = debug_out ("Converting local module '" ^ local_module_name ^ "' ...") in
-    let lm = PBuf.conv_to_data_local
-      pbuf local_module_name
-      ((fun fname fixity tclass -> { fname = fname; fixity = fixity; tclass = tclass; } ), op_def_string)
-      make_data
-    in
-    let _ = debug_out ("Convert local module done.") in
-
-    let _ = SAH.add new_mod_assoc local_module_name lm in
-    (* let _ = (pbuf.PBuf.get_local_module ()).PBuf.symbol <- (S.intern local_module_name) in *)
-      { module_assoc = new_mod_assoc;
-
-        local_module = lm;
-
-        syntax = syntax_t
-      }
-
-end
-
 
 module Module =
 struct
-  module PD = ParsedData
   module ID = Identifier 
-
-  type mod_data = PD.module_data
 
   type symbols =
       List of ID.idwl list
@@ -555,10 +250,7 @@ end
 
 module Pattern =
 struct
-  module PD = ParsedData
   module ID = Identifier 
-
-  type mod_data = PD.module_data
 
   type 'pat op2list_opf =
       Op2F of (ID.idwl * 'pat op2list_patf)
@@ -590,56 +282,6 @@ struct
 
     | ConOp2P of (ID.idwl * pat * pat)
 
-(*
-pati     ->      pati+1 [qconop(n,i) pati+1]
-        |       lpati
-        |       rpati
-lpati   ->      (lpati | pati+1) qconop(l,i) pati+1
-rpati   ->      pati+1 qconop(r,i) (rpati | pati+1)
-*)
-
-  let rec scan_op2pat min_i pdata pat_fun list =
-    let rec fold_leafs list =
-      let scanned_op2pat op patAA patBB =
-        ConOp2P (op,
-                 pat_fun patAA,
-                 pat_fun patBB) in
-        
-        match list with
-          | PatF (pat, Op2End) ->
-              uni_pat (pat_fun pat)
-          | PatF (patAA, Op2F (op_aa_wl, (PatF (patBB, Op2End)))) ->
-              uni_pat (scanned_op2pat op_aa_wl patAA patBB)
-          | PatF (patAA, Op2F ((op_aa, _) as op_aa_wl, ((PatF (patBB, Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
-              begin
-                (* 演算子の優先順位を取得するために (current, prelude) as pdata を渡す *)
-                let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
-                let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
-                  match (aa_fixity, bb_fixity) with
-                      ((_, aa_i), _) when aa_i < min_i ->
-                        failwith (F.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str aa_fixity))
-                    | (_, (_, bb_i)) when bb_i < min_i ->
-                        failwith (F.sprintf "Pat%d cannot involve fixity %s operator." min_i (fixity_str bb_fixity))
-                    | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-                        fold_leafs (patf_cons (scanned_op2pat op_aa_wl patAA patBB) op_bb_wl rest)
-                    | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
-                        fold_leafs (patf_cons (scanned_op2pat op_aa_wl patAA patBB) op_bb_wl rest)
-                    | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-                        patf_cons patAA op_aa_wl (fold_leafs cdr)
-                    | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
-                        patf_cons patAA op_aa_wl (fold_leafs cdr)
-                    | _ ->
-                        failwith (F.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
-                                    (fixity_str aa_fixity)
-                                    (fixity_str bb_fixity))
-              end
-          | _ -> failwith "Arity 2 operator pattern syntax error."
-    in
-      match fold_leafs list with
-        | PatF (pat, Op2End) -> pat
-        | PatF (pat, Op2F (_, Op2NoArg)) -> failwith "scan_op2pat: section not implemented."
-        | folded -> scan_op2pat min_i pdata pat_fun folded
-
 end
 
 module Guard =
@@ -652,10 +294,7 @@ type 'exp gdrhs = ('exp Guard.t * 'exp) list
 
 module Type =
 struct
-  module PD = ParsedData
   module ID = Identifier 
-
-  type mod_data = PD.module_data
 
   type cons =
       TupleC of int
@@ -726,10 +365,7 @@ end
 
 module Constructor =
 struct
-  module PD = ParsedData
   module ID = Identifier 
-
-  type mod_data = PD.module_data
 
   type con =
       App of (ID.idwl * Type.arity list)
@@ -743,10 +379,7 @@ end
 
 module Context =
 struct
-  module PD = ParsedData
   module ID = Identifier 
-
-  type mod_data = PD.module_data
 
   type clazz =
       Class of (ID.idwl * ID.idwl)
@@ -757,10 +390,8 @@ end
 
 module Instance =
 struct
-  module PD = ParsedData
-  module ID = Identifier 
 
-  type mod_data = PD.module_data
+  module ID = Identifier 
 
   type cons_arity =
       Type of (Type.cons * ID.idwl list)
@@ -771,13 +402,8 @@ end
 
 module Decl =
 struct
-  module PBuf = ParseBuffer
-
-  module PD = ParsedData
   module ID = Identifier
   module P = Pattern
-
-  type mod_data = PD.module_data
 
   type gendecl =
     | TypeSig of (ID.idwl list * Context.context option * Type.typ)
@@ -918,13 +544,10 @@ end
 
 module Expression =
 struct
-  module PD = ParsedData
   module ID = Identifier 
   module P = Pattern
   module DS = DoStmt
   module A = Array
-
-  type mod_data = PD.module_data
 
   type 'exp op2list_opf =
       Op2F of (ID.idwl * 'exp op2list_expf)
@@ -1007,10 +630,6 @@ struct
         | _                -> None
     in cons_aexp_list cons_fexp []
 
-(*
-  let make_var_exp name pd =
-    VarE (ID.idwul ((PD.qual_fun pd) name))
-*)
   let make_prelude_var_exp name =
     VarE (ID.idwul (ID.qualid the_prelude_symbol (S.intern name)))
 
@@ -1018,8 +637,6 @@ end
 
 module All =
 struct
-  module PD = ParsedData
-
   module L = List
 
   module ID = Identifier

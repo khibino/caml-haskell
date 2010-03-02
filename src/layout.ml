@@ -7,8 +7,6 @@ module T = Token
 module S = Stack
 module SYN = Syntax
 module ID = SYN.Identifier
-module PD = SYN.ParsedData
-(* module SS = SYN.Scan *)
 
 exception Error of string
 

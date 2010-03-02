@@ -1,16 +1,33 @@
 
+module F = Printf
+module H = Hashtbl
+
+module S = Symbol
 module SYN = Syntax
-module PBuf = SYN.ParseBuffer
 module SAH = SaHashtbl
-module PD = SYN.ParsedData
-(* module D = SYN.Decl *)
 module LO = Layout
+module E = Eval
 
 let _ =
   let _ = (output_string stderr "--- fixity check mode ---\n",
-	   (LO.debugFlag := true),
-	   (LO.Old.debugFlagFixity := false),
-	   (PD.debugFlag := true)) in
-  let pd = LO.Old.parse_with_prelude (Util.unix_input_chan ()) in
+	   (* (LO.debugFlag := true) *)
+           (LO.debugFlag := false)
+          ) in
+  let (ex, prog) =
+    E.fixity_eval_program
+      (E.load_program
+         (LO.parse_with_prelude
+            (Util.unix_input_chan ()))) in
   let _ = output_string stderr "--- data dump ---\n" in
-    output_string stderr (SAH.to_string pd.PD.module_assoc)
+    SaHt.fold
+      (fun name modbuf () ->
+         H.fold
+           (fun opsym (fixity, _) () ->
+              F.fprintf stderr "%s: %s: %s\n"
+                (S.name name)
+                (S.name opsym)
+                (SYN.fixity_str fixity))
+           (E.module_fixity modbuf)
+           ())
+      prog
+      ()

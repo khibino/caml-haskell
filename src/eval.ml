@@ -11,9 +11,7 @@ module T = Token
 module S = Symbol
 module LO = Layout
 module SYN = Syntax
-module PBuf = SYN.ParseBuffer
 module ID = SYN.Identifier
-module PD = SYN.ParsedData
 module D = SYN.Decl
 module M = SYN.Module
 module CA = SYN.Case
@@ -299,8 +297,9 @@ let eval_op2_fixity modbuf id =
 
 let bind_op2_fixity modbuf id ((fixity, tcls) as op2) =
   let ftab = module_fixity modbuf in
-    (H.add ftab (ID.long_sym id) op2,
-     H.add ftab (ID.short_sym id) op2)
+  let _ = (H.add ftab (ID.long_sym id) op2,
+           H.add ftab (ID.short_sym id) op2) in
+    ()
 
 let global_fixity program modsym sym =
   let modbuf = program_module_buffer program modsym in
@@ -308,6 +307,7 @@ let global_fixity program modsym sym =
     h_find_fixity ftab sym
 
 let bind_import_fixity ftab program is_qual modsym sym fixity =
+  (* let _ = F.printf "DEBUG: bind_fixity: modsym %s sym %s\n" (S.name modsym) (S.name sym) in *)
   let _ = if not is_qual then H.add ftab sym fixity in
     H.add ftab (qualified_sym modsym sym) fixity
 
@@ -353,7 +353,7 @@ let list2term_func modbuf =
     in
       match fold_leafs list with
         | P.PatF (pat, P.Op2End) -> pat
-        | P.PatF (pat, P.Op2F (_, P.Op2NoArg)) -> failwith "scan_op2pat: section not implemented."
+        | P.PatF (pat, P.Op2F (_, P.Op2NoArg)) -> failwith "patlist2term: section not implemented."
         | folded -> patlist2term min_i func folded
   in
 
@@ -975,7 +975,9 @@ let fixity_eval_module exbuf modbuf =
           let _ = L.map (eval_export exbuf env) export_list in
           let imp_map = module_import_module modbuf in
           let _ =
-            if modsym != SYN.the_prelude_symbol then
+            if modsym == SYN.the_prelude_symbol then
+              bind_op2_fixity modbuf ID.sp_colon ((SYN.InfixRight, 5), None)
+            else
               (* import Prelude *)
               H.add imp_map SYN.the_prelude_symbol (M.NotQual, SYN.the_prelude_symbol, None, None)
           in
@@ -1037,11 +1039,15 @@ let fixity_resolve_import_module ftab imp_mod_sym ex_mod_sym is_qual program =
   let ex_ftab = module_fixity ex_modbuf in
     H.iter
       (fun sym value ->
-         (* let _ = F.printf "DEBUG: fixity_import: mod %s imp %s ex %s sym %s\n"
-           (S.name imp_mod_sym) (S.name ex_mod_sym) (S.name sym) in *)
-         bind_import_fixity
-           ftab program is_qual imp_mod_sym sym
-           value)
+         match ID.parse_sym sym with
+           | (None, sym) ->
+               (* let _ = F.printf "DEBUG: fixity_import: imp %s ex %s sym %s\n"
+                  (S.name imp_mod_sym) (S.name ex_mod_sym) (S.name sym) in *)
+               bind_import_fixity
+                 ftab program is_qual imp_mod_sym sym
+                 value
+           | (Some modsym, sym) -> ()
+      )
       ex_ftab
 
 
@@ -1064,11 +1070,15 @@ let resolve_import_module env imp_mod_sym ex_mod_sym is_qual program =
   let top_tab = module_top_tab program ex_mod_sym in
     H.iter
       (fun sym value ->
-         (* let _ = F.printf "DEBUG: import: mod %s imp %s ex %s sym %s\n"
-           (S.name imp_mod_sym) (S.name ex_mod_sym) (S.name sym) in *)
-         bind_import_value
-           env program is_qual imp_mod_sym sym
-           value)
+         match ID.parse_sym sym with
+           | (None, sym) ->
+               (* let _ = F.printf "DEBUG: import: mod %s imp %s ex %s sym %s\n"
+                  (S.name imp_mod_sym) (S.name ex_mod_sym) (S.name sym) in *)
+               bind_import_value
+                 env program is_qual imp_mod_sym sym
+                 value
+           | (Some modsym, sym) -> ()
+      )
       top_tab
 
 let fixity_eval_program program =
