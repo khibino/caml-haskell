@@ -1,6 +1,4 @@
 
-module S = Symbol
-
 type point = {
   col  : int;
   line : int;
@@ -11,11 +9,6 @@ type loc = {
   end_p   : point;
 }
 
-type id_with_mod = {
-  modid : string;
-  id : string;
-}
-
 let point_to_string p =
   Format.sprintf "%3d:%3d: " p.line p.col
 
@@ -24,6 +17,16 @@ let length loc =
     (loc.end_p.col - loc.start_p.col)
   else
     -1
+
+module S = Symbol
+
+type id_with_mod = {
+  modid : S.t;
+  id : S.t;
+}
+
+let with_mod_str idwm =
+  (S.name idwm.modid) ^ "." ^ (S.name idwm.id)
 
 let implicit_loc =
   { start_p = { col = -1; line = -1 };

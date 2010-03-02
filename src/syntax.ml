@@ -214,7 +214,7 @@ struct
 
   let name_sym id = S.intern (name_str id)
 
-  let make_id_with_mod iwm = make_qual_id iwm.T.modid iwm.T.id
+  let make_id_with_mod iwm = qualid iwm.T.modid iwm.T.id
 
   let make_idwl_with_mod (iwm, loc) = idwl (make_id_with_mod iwm) loc
 

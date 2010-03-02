@@ -49,7 +49,8 @@
   let decode_with_mod lexbuf =
     let t = LX.lexeme lexbuf in
     let pp = String.index t '.' in
-      { T.modid = (Str.string_before t pp); T.id = (Str.string_after t pp) }
+      { T.modid = S.intern (Str.string_before t pp);
+        T.id    = S.intern (Str.string_after t pp) }
 
   let decode_cexpr cexpr =
     let fchar = String.get cexpr 0 in
@@ -352,11 +353,11 @@ rule token = parse
       | P.T_CLSID(n, loc) -> "<class>:" ^ (S.name n), loc
       | P.T_VARSYM(n, loc) -> (S.name n), loc
       | P.T_CONSYM(n, loc) -> (S.name n), loc
-      | P.T_MOD_VARID(wm, loc) -> wm.T.modid ^ "." ^ wm.T.id, loc
-      | P.T_MOD_CONID(wm, loc) -> wm.T.modid ^ "." ^ wm.T.id, loc
-      | P.T_MOD_CLSID(wm, loc) -> "<class>:" ^ wm.T.modid ^ "." ^ wm.T.id, loc
-      | P.T_MOD_VARSYM(wm, loc) -> wm.T.modid ^ "." ^ wm.T.id, loc
-      | P.T_MOD_CONSYM(wm, loc) -> wm.T.modid ^ "." ^ wm.T.id, loc
+      | P.T_MOD_VARID(wm, loc) -> T.with_mod_str wm, loc
+      | P.T_MOD_CONID(wm, loc) -> T.with_mod_str wm, loc
+      | P.T_MOD_CLSID(wm, loc) -> "<class>:" ^ T.with_mod_str wm, loc
+      | P.T_MOD_VARSYM(wm, loc) -> T.with_mod_str wm, loc
+      | P.T_MOD_CONSYM(wm, loc) -> T.with_mod_str wm, loc
       | P.L_CHAR(c, loc) -> Format.sprintf "'%c'" c, loc
       | P.L_STRING(s, loc) -> "\"" ^ s ^ "\"", loc
       | P.L_INTEGER(i64, loc) -> Int64.to_string i64, loc
