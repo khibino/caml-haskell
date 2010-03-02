@@ -75,8 +75,6 @@ let must_be_int li err =
 
 module Identifier =
 struct
-
-  module SAH = SaHashtbl
   module S = Symbol
 
   type sp_con =

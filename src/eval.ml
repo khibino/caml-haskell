@@ -6,7 +6,6 @@ module H = Hashtbl
 module F = Printf
 
 module OH = OrderedHash
-module SAH = SaHashtbl
 module T = Token
 module S = Symbol
 module LO = Layout
@@ -1159,7 +1158,3 @@ let eval_program (exbuf, program) =
 let eval_test fn =
   let prog = fixity_eval_program (load_program (LO.parse_files_with_prelude [fn])) in
     eval_program prog
-
-(*
-  SAH.find (Eval.load_program (Eval.LO.Old.parse_files_with_prelude [fn])).Eval.pdata_assoc.Eval "Main"
-*)

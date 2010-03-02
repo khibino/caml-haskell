@@ -9,7 +9,7 @@ scratch_sources = \
 	util.ml \
 	symbol.ml \
 	saHt.ml \
-	saHashtbl.ml orderedHash.ml \
+	orderedHash.ml \
 	token.ml \
 	syntax.ml \
 	parseErr.ml \

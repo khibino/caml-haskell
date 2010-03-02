@@ -4,7 +4,6 @@ module H = Hashtbl
 
 module S = Symbol
 module SYN = Syntax
-module SAH = SaHashtbl
 module LO = Layout
 module E = Eval
 
