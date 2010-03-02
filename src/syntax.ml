@@ -393,53 +393,10 @@ struct
       | (_, Unq m)  -> PBuf.find_local_module () (* FIXME unqualified symbol may be defined by Prelude *)
       | (_, Q m)    -> PBuf.find_module (S.name m)
 
-  let as_op_set_fixity id fixity =
-    SaHt.add (get_module_buffer id).PBuf.op_fixity_assoc (name_sym id) fixity
-
-  let as_op_set_typesig id tclass =
-    SAH.add (get_module_buffer id).PBuf.op_typesig_assoc (name_str id) tclass
-
-  let class_regist id def =
-    (* debug_out (F.sprintf "class_regist: %s" (name_str id)); *)
-    SAH.add (get_module_buffer id).PBuf.tclass_assoc (name_str id) def
-
-  let class_find id =
-    SAH.find (get_module_buffer id).PBuf.tclass_assoc (name_str id)
-
-  let class_p_with_mod m id =
-    SAH.mem m.PBuf.tclass_assoc (name_str id)
-
-  let local_class_p sym =
-    match PBuf.peek_last_buffer () with
-      | None     -> false
-      | Some _   ->
-          let m = PBuf.find_local_module () in
-            class_p_with_mod m (qualid m.PBuf.symbol (S.intern sym))
-            (* FIXME unqualified symbol may be defined by Prelude *)
-    
-  let class_p id =
-    match id.short, id.qual with
-      | (Sp _, _)   -> class_p_with_mod (PBuf.find_module (the_prelude_name)) id
-      | (_, Unq m)  ->
-          begin
-            match PBuf.peek_last_buffer () with
-              | None     -> false
-              | Some _   -> 
-                  class_p_with_mod (PBuf.find_local_module ()) id
-                    (* FIXME unqualified symbol may be defined by Prelude *)
-          end
-      | (_, Q m)    -> class_p_with_mod (PBuf.find_module (S.name m)) id
-
 (*
-  let fun_regist id def =
-    SAH.replace (get_module_buffer id).PBuf.op_fun_assoc (name_str id) def
-
-  let fun_find id =
-    SAH.find (get_module_buffer id).PBuf.op_fun_assoc (name_str id)
-*)
-
   let op_prelude_def () =
     as_op_set_fixity sp_colon ((InfixRight, 5), None)
+*)
 
 end
 
@@ -1059,222 +1016,6 @@ struct
 
 end
 
-(*
-module Scan =
-struct
-  module L = List
-
-  module PBuf = ParseBuffer
-
-  module PD = ParsedData
-  module ID = Identifier
-  module P = Pattern
-  module GD = Guard
-  module D = Decl
-  module DS = DoStmt
-  module E = Expression
-
-  let fixity_scan_gendecl =
-    function
-        (D.Fixity (fix, id_list), tcls) ->
-          let _ = List.map (fun (id, _) -> ID.as_op_set_fixity id (fix, tcls)) id_list in ()
-      | (D.TypeSig (id_list, _, _), None) ->
-          ()
-      | (D.TypeSig (id_list, _, _), Some tcls) ->
-          let _ = List.map (fun (id, _) -> ID.as_op_set_typesig id tcls) id_list in ()
-      | _ -> ()
-
-  let fixity_scan_decl =
-    function
-        D.GenDecl g -> fixity_scan_gendecl (g, None)
-      | _ -> ()
-
-  let fixity_scan_cdecl tcls =
-    function
-        D.GenDeclC g -> fixity_scan_gendecl (g, (Some tcls))
-      | _ -> ()
-          
-  let fixity_scan_topdecl =
-    function 
-        D.Decl d -> fixity_scan_decl d
-      | D.Class (ctx, (cls, _), _, cdecl_list) ->
-          let _ = List.map (fun cdecl -> fixity_scan_cdecl (ID.class_find cls) cdecl) cdecl_list in
-            ()
-      | _ -> ()
-
-  let fixity_scan_module =
-    function
-        (_, _, (_, topdecl_list)) -> List.map fixity_scan_topdecl topdecl_list
-
-
-
-  let lastScanBug = ref None
-
-  let rec scan_exp_top pdata =
-      function
-          E.Top (exp, x) -> E.Top ((scan_exp0 pdata exp), x)
-        | x -> lastScanBug := Some x; failwith "Syntax BUG!!"
-
-  and scan_exp0 pdata =
-    (*  *)
-    let scan_atom_exp pdata =
-      function
-          E.ParenE exp -> E.ParenE (scan_exp_top pdata exp)
-        | E.TupleE elist -> E.TupleE (L.map (fun exp -> scan_exp_top pdata exp) elist)
-        | E.ListE elist -> E.ListE (L.map (fun exp -> scan_exp_top pdata exp) elist)
-        | x -> x
-    in
-    (*  *)
-    let rec scan_fun_exp pdata =
-      function
-          E.FfunE aexp -> E.FfunE (scan_atom_exp pdata aexp)
-        | E.FappE (fexp, aexp) -> E.FappE (scan_fun_exp pdata fexp, scan_atom_exp pdata aexp)
-        | E.FappEID -> failwith "Syntax BUG!!. FappEID found."
-    in
-    (*  *)
-    let scan_exp10 pdata exp10 =
-      match exp10 with
-          E.LambdaE (x, exp) -> E.LambdaE (x, scan_exp_top pdata exp)
-        | E.LetE (decl_list, exp) -> E.LetE (L.map (op2_scan_decl pdata) decl_list, scan_exp_top pdata exp)
-        | E.IfE (pred, t, f) -> E.IfE (scan_exp_top pdata pred, scan_exp_top pdata t, scan_exp_top pdata f)
-        | E.CaseE (exp, x) -> E.CaseE (scan_exp_top pdata exp, x)
-        | E.DoE (stmt_list, exp) -> E.DoE (L.map (scan_do_stmt pdata) stmt_list, scan_exp_top pdata exp)
-        | E.FexpE fexp -> E.FexpE (scan_fun_exp pdata fexp)
-        | x -> x
-    in
-
-    (*  *)
-    let rec fold_leafs list =
-      let scanned_op2exp op expAA expBB =
-        E.VarOp2E (op,
-                   scan_exp10 pdata expAA,
-                   scan_exp10 pdata expBB) in
-        match list with
-          | E.ExpF (exp, E.Op2End) -> (* list *)
-              E.uni_exp (scan_exp10 pdata exp)
-          | E.ExpF (expAA, E.Op2F (op_aa,
-                                   (E.ExpF (expBB, E.Op2End)))) ->
-              E.uni_exp (scanned_op2exp op_aa expAA expBB)
-          | E.ExpF (expAA, E.Op2F ((op_aa, _) as op_aa_wl,
-                                   ((E.ExpF (expBB, E.Op2F ((op_bb, _) as op_bb_wl, rest))) as cdr))) ->
-              begin
-                (* 演算子の優先順位を取得するために (current, prelude) as pdata を渡す *)
-                let aa_fixity = (PD.id_op_def pdata op_aa).PD.fixity in
-                let bb_fixity = (PD.id_op_def pdata op_bb).PD.fixity in
-                  (* F.printf "(%s, %d) vs (%s, %d)\n" (ID.name_str op_aa) (snd aa_fixity) (ID.name_str op_bb) (snd bb_fixity); *)
-                  match (aa_fixity, bb_fixity) with
-                    | ((_, aa_i), (_, bb_i)) when aa_i > bb_i ->
-                        fold_leafs (E.expf_cons (scanned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
-                    | ((InfixLeft, aa_i), (InfixLeft, bb_i)) when aa_i = bb_i ->
-                        fold_leafs (E.expf_cons (scanned_op2exp op_aa_wl expAA expBB) op_bb_wl rest)
-                    | ((_, aa_i), (_, bb_i)) when aa_i < bb_i ->
-                        E.expf_cons expAA op_aa_wl (fold_leafs cdr)
-                    | ((InfixRight, aa_i), (InfixRight, bb_i)) when aa_i = bb_i ->
-                        E.expf_cons expAA op_aa_wl (fold_leafs cdr)
-                    | _ ->
-                        failwith (F.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
-                                    (fixity_str aa_fixity)
-                                    (fixity_str bb_fixity))
-              end
-          | _ -> failwith "Arity 2 operator expression syntax error."
-    in
-    (*  *)
-    let rec scan_op2exp pdata list =
-      match fold_leafs list with
-        | E.ExpF (exp, E.Op2End) -> exp
-        | E.ExpF (exp, E.Op2F (_, E.Op2NoArg)) -> failwith "scan_op2exp: section not implemented."
-        | folded -> scan_op2exp pdata folded
-            (*
-            (* TODO: The same form section scan function *)
-              and scan_op2exp_rsec pdata rs_list =
-              match rs_list with
-              E.Op2End -> scan_exp10 pdata exp
-              | E.Op2F (op_aa, (E.ExpF (expBB, E.Op2End))) ->
-              ...
-            *)
-    in
-      (* scan_exp0 body *)
-      function
-          E.Exp0 exp0 -> (scan_op2exp pdata exp0)
-        | x -> x
-
-  and scan_do_stmt pdata stmt =
-    match stmt with
-        DS.Exp (exp) -> DS.Exp (scan_exp_top pdata exp)
-      | DS.Cons (pat, exp) -> DS.Cons (op2_scan_pat pdata pat, scan_exp_top pdata exp)
-      | DS.Let (dlist) -> DS.Let (List.map (op2_scan_decl pdata) dlist)
-      | DS.Empty -> DS.Empty
-
-  and op2_scan_pat pdata =
-    let rec  op2_scan_atompat pdata =
-      function
-          P.AsP (id, p) -> P.AsP (id, op2_scan_pat pdata p)
-        | P.ConP (id, plist) -> P.ConP (id, L.map (fun p0 -> op2_scan_pat pdata p0) plist)
-        | P.LabelP (id, idp_list) -> P.LabelP (id, (L.map (fun (id, p0) -> (id, op2_scan_pat pdata p0)) idp_list))
-        | P.TupleP (plist) -> P.TupleP (L.map (fun p0 -> op2_scan_pat pdata p0) plist)
-        | P.ListP  (plist) -> P.ListP  (L.map (fun p0 -> op2_scan_pat pdata p0) plist)
-        | P.Irref (p) -> P.Irref (op2_scan_pat pdata p)
-        | x -> x
-    in
-      function
-          P.Pat0 (patf) -> P.scan_op2pat 0 pdata (op2_scan_pat pdata) patf
-        | P.Pat1 (patf) -> P.scan_op2pat 1 pdata (op2_scan_pat pdata) patf
-        | p -> op2_scan_atompat pdata p
-
-  and op2_scan_funlhs pdata =
-    function
-        D.FunLV (var, pat_list) ->
-          D.FunLV (var, L.map (fun p -> op2_scan_pat pdata p) pat_list)
-      | D.Op2Fun (varop, (pat_aa, pat_bb)) ->
-          D.Op2Fun (varop, (op2_scan_pat pdata pat_aa, op2_scan_pat pdata pat_bb))
-      | D.NestDec (lhs, pat_list) ->
-          D.NestDec (op2_scan_funlhs pdata lhs, L.map (fun p -> op2_scan_pat pdata p) pat_list)
-
-  and op2_scan_guard pdata =
-    function
-        (GD.Guard gde, exp) -> (GD.Guard (scan_exp0 pdata gde), scan_exp_top pdata exp)
-
-  and op2_scan_rhs pdata =
-      function
-          D.Rhs (exp, None) -> D.Rhs (scan_exp_top pdata exp, None)
-        | D.Rhs (exp, Some exp_decl_list) -> D.Rhs (scan_exp_top pdata exp, Some (L.map (op2_scan_decl pdata) exp_decl_list))
-        | D.RhsWithGD (gdrhs_list, None) -> D.RhsWithGD (L.map (op2_scan_guard pdata) gdrhs_list, None)
-        | D.RhsWithGD (gdrhs_list, Some exp_decl_list) -> D.RhsWithGD (L.map (op2_scan_guard pdata) gdrhs_list, Some (List.map (op2_scan_decl pdata) exp_decl_list))
-
-  and op2_scan_decl pdata =
-    function
-        D.FunDec deflist -> D.FunDec (L.map (fun (lhs, rhs) -> (op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs)) deflist)
-      | D.PatBind (pat, rhs) -> D.PatBind ((op2_scan_pat pdata pat), (op2_scan_rhs pdata rhs))
-      | x -> x
-
-  and op2_scan_cdecl pdata tcls =
-    function
-        D.FunDecC deflist -> D.FunDecC (L.map (fun (lhs, rhs) -> (op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs)) deflist)
-      | x -> x
-
-  and op2_scan_idecl pdata tcls =
-    function
-        D.FunDecI deflist -> D.FunDecI (L.map (fun (lhs, rhs) -> (op2_scan_funlhs pdata lhs), (op2_scan_rhs pdata rhs)) deflist)
-      | x -> x
-
-  and op2_scan_topdecl pdata =
-    function 
-        D.Decl d -> D.Decl (op2_scan_decl pdata d)
-      | D.Class (ctx, ((cls, _) as cls_wl), x, cdecl_list) ->
-          let new_cdecl_list = List.map (fun cdecl -> op2_scan_cdecl pdata (ID.class_find cls) cdecl) cdecl_list in
-            D.Class (ctx, cls_wl, x, new_cdecl_list)
-      | D.Instance (ctx, ((cls, _) as cls_wl), x, idecl_list) ->
-          let new_idecl_list = List.map (fun idecl -> op2_scan_idecl pdata (ID.class_find cls) idecl) idecl_list in
-            D.Instance (ctx, cls_wl, x, new_idecl_list)
-      | x -> x
-
-  and op2_scan_module pdata =
-    function
-        (x, y, (z, topdecl_list)) -> (x, y, (z, List.map (op2_scan_topdecl pdata) topdecl_list))
-    
-end
-*)
-
 module All =
 struct
   module PD = ParsedData
@@ -1383,12 +1124,12 @@ struct
       | D.PatBind (pat, rhs) -> D.PatBind ((maptree_pat func pat), (maptree_rhs func rhs))
       | x -> x
 
-  and maptree_cdecl func (* tcls *) =
+  and maptree_cdecl func cls =
     function
         D.FunDecC deflist -> D.FunDecC (L.map (fun (lhs, rhs) -> (maptree_funlhs func lhs), (maptree_rhs func rhs)) deflist)
       | x -> x
 
-  and maptree_idecl func (* tcls *) =
+  and maptree_idecl func cls =
     function
         D.FunDecI deflist -> D.FunDecI (L.map (fun (lhs, rhs) -> (maptree_funlhs func lhs), (maptree_rhs func rhs)) deflist)
       | x -> x
@@ -1397,10 +1138,10 @@ struct
     function 
         D.Decl d -> D.Decl (maptree_decl func d)
       | D.Class (ctx, ((cls, _) as cls_wl), x, cdecl_list) ->
-          let new_cdecl_list = List.map (fun cdecl -> maptree_cdecl func (* (ID.class_find cls) *) cdecl) cdecl_list in
+          let new_cdecl_list = List.map (fun cdecl -> maptree_cdecl func cls cdecl) cdecl_list in
             D.Class (ctx, cls_wl, x, new_cdecl_list)
       | D.Instance (ctx, ((cls, _) as cls_wl), x, idecl_list) ->
-          let new_idecl_list = List.map (fun idecl -> maptree_idecl func (* (ID.class_find cls) *) idecl) idecl_list in
+          let new_idecl_list = List.map (fun idecl -> maptree_idecl func cls idecl) idecl_list in
             D.Instance (ctx, cls_wl, x, new_idecl_list)
       | x -> x
 
