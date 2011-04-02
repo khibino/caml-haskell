@@ -258,7 +258,7 @@ let list2term_func modbuf =
                     | ((SYN.InfixRight, aa_i), (SYN.InfixRight, bb_i)) when aa_i = bb_i ->
                         E.expf_cons expAA op_aa_wl (fold_leafs cdr)
                     | _ ->
-                        failwith (F.sprintf "Syntax error for operation priority. left fixity %s, right fixity %s"
+                        failwith (F.sprintf "Syntax error for operator priority. left fixity %s, right fixity %s"
                                     (SYN.fixity_str aa_fixity)
                                     (SYN.fixity_str bb_fixity))
               end
